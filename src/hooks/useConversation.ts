@@ -160,18 +160,39 @@ export function useConversation(productId?: string, isSimulation: boolean = fals
   }, [getSessionId, createConversation, isSimulation]);
 
   // Adicionar mensagem
-  const addMessage = useCallback(async (content: string, sender: 'user' | 'bot', categoria?: string): Promise<Message | null> => {
+  // Agora permite informar previamente o ID da mensagem.
+  // Isso possibilita preparar o áudio antes de inserir a mensagem no chat.
+  const addMessage = useCallback(async (
+    content: string,
+    sender: 'user' | 'bot',
+    categoria?: string,
+    messageId?: string
+  ): Promise<Message | null> => {
     if (!conversationId) return null;
 
     try {
+      const messageData: {
+        id?: string;
+        conversation_id: string;
+        content: string;
+        sender: 'user' | 'bot';
+        categoria?: string;
+      } = {
+        conversation_id: conversationId,
+        content,
+        sender,
+        categoria
+      };
+
+      // Se o Chat.tsx já preparou um ID para o áudio,
+      // usamos exatamente o mesmo ID no banco.
+      if (messageId) {
+        messageData.id = messageId;
+      }
+
       const { data, error } = await supabase
         .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          content,
-          sender,
-          categoria
-        })
+        .insert(messageData)
         .select()
         .single();
 
