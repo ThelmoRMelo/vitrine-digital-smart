@@ -2,3 +2,6 @@ project_id = "barivhkrfygqallplqmp"
 
 [functions.preview]
 verify_jwt = false
+
+[functions.ai-fallback]
+verify_jwt = false

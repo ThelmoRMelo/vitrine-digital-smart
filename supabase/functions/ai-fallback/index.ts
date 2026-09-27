@@ -6,6 +6,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function jsonResponse(
+  response: string,
+  recommendedProductIds: string[] = [],
+  negotiationUpdate: Partial<NegotiationState> | null = null,
+  closingUpdate: Partial<ClosingState> | null = null,
+) {
+  return new Response(
+    JSON.stringify({ response, recommendedProductIds, negotiationUpdate, closingUpdate }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
+
+function serviceFallback(storeName: string, productName?: string) {
+  const focus = productName ? ` sobre ${productName}` : "";
+  return `Oi! Sou a ANIA da ${storeName}. Estou com uma instabilidade temporária${focus}. Pode tentar novamente em instantes?`;
+}
+
 interface ProductInfo {
   id: string;
   nome: string;
@@ -105,14 +122,6 @@ serve(async (req) => {
       aniaSettings?.fallback_message ||
       "Essa informação não está cadastrada no sistema no momento.";
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
-
-
-
     const storeName = businessName || "nossa loja";
     const storeCategory = businessCategory || "produtos";
     const productList = products as ProductInfo[] || [];
@@ -135,21 +144,12 @@ serve(async (req) => {
 
     // Se não há produtos, responder diretamente
     if (!hasProducts) {
-      return new Response(
-        JSON.stringify({ response: `Ainda não temos produtos cadastrados na **${storeName}**. Em breve teremos novidades! 😊` }), 
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse(`Ainda não temos produtos cadastrados na **${storeName}**. Em breve teremos novidades! 😊`);
     }
 
     // Se a conversa já foi encerrada
     if (closing.conversationEnded) {
-      return new Response(
-        JSON.stringify({ 
-          response: "Quando quiser finalizar, é só me chamar! 👍",
-          closingUpdate: { conversationEnded: true }
-        }), 
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse("Quando quiser finalizar, é só me chamar! 👍", [], null, { conversationEnded: true });
     }
 
     // Verificar se já houve mensagens (não é primeira interação)
@@ -690,6 +690,12 @@ REGRAS ABSOLUTAS:
       { role: "user", content: message }
     ];
 
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      console.error("[ai-fallback] LOVABLE_API_KEY is not configured");
+      return jsonResponse(serviceFallback(storeName, focusedProduct?.nome));
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -705,32 +711,15 @@ REGRAS ABSOLUTAS:
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ 
-            error: "rate_limit",
-            fallbackResponse: "Um momento... pode repetir?" 
-          }), 
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      return new Response(
-        JSON.stringify({ 
-          error: "ai_error",
-          fallbackResponse: focusedProduct 
-            ? `Quer saber mais sobre o ${focusedProduct.nome}?`
-            : `Oi! Sou a ANIA da ${storeName}. Como posso ajudar?` 
-        }), 
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      console.error(`[ai-fallback] AI gateway returned HTTP ${response.status}:`, errorText);
+      return jsonResponse(serviceFallback(storeName, focusedProduct?.nome));
     }
 
     const data = await response.json();
-    let aiResponse = data.choices?.[0]?.message?.content || 
-      `Oi! Sou a ANIA da ${storeName}. Como posso te ajudar?`;
+    const gatewayContent = data?.choices?.[0]?.message?.content;
+    let aiResponse = typeof gatewayContent === "string" && gatewayContent.trim()
+      ? gatewayContent.trim()
+      : serviceFallback(storeName, focusedProduct?.nome);
   // ============================================================
 // EXTRAIR RECOMENDAÇÕES DOS PRODUTOS
 // ============================================================
@@ -815,25 +804,11 @@ if (productMarkerMatch) {
       aiResponse = "Essa é minha melhor condição. Quando quiser finalizar, é só me chamar 👍";
     }
 
-    return new Response(
-  JSON.stringify({
-    response: aiResponse,
-    recommendedProductIds,
-    negotiationUpdate,
-    closingUpdate,
-  }),
-  { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-);
+    return jsonResponse(aiResponse, recommendedProductIds, negotiationUpdate, closingUpdate);
 
   } catch (error) {
     console.error("ai-fallback error:", error);
-    return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : "Unknown error",
-        fallbackResponse: "Oi! Como posso te ajudar?" 
-      }), 
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse("Oi! Sou a ANIA. Estou com uma instabilidade temporária. Pode tentar novamente em instantes?");
   }
 });
 
