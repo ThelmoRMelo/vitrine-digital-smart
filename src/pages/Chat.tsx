@@ -1,4 +1,4 @@
-// Chat.tsx - Página PÚBLICA de chat para clientes finais
+//chat.tsx - Página PÚBLICA de chat para clientes finais
 // Suporta vitrine com slug + tenant_id
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -16,15 +16,27 @@ import { toast } from 'sonner';
 import { ProductGalleryViewer, ProductGalleryPreview } from '@/components/ProductGalleryViewer';
 import { CatalogCards } from '@/components/chat/CatalogCards';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
-import { SpeakButton, playMessageSpeech, stopMessageSpeech, cleanTextForSpeech } from '@/components/chat/SpeakButton';
+//import { SpeakButton, playMessageSpeech, stopMessageSpeech, cleanTextForSpeech } from '@/components/chat/SpeakButton';
+import {
+  SpeakButton,
+  playMessageSpeech,
+  playPreparedMessageSpeech,
+  prepareMessageSpeech,
+  stopMessageSpeech,
+  cleanTextForSpeech
+} from '@/components/chat/SpeakButton';
 
 // Chave estável da preferência de áudio automático (padrão: ativado)
 const AUTO_SPEAK_KEY = 'ania_auto_speak_enabled';
 
 
+//const CATALOG_MARKER = '__CATALOG__';
+//const CATALOG_REGEX = /\b(catálogo|catalogo|produtos?|opções|opcoes|cardápio|cardapio|o que (vocês|voces|tu) (vende|tem|oferec|têm|tens)|me mostra|quero ver|mostrar (os )?produtos|lista de produtos|disponíveis|disponiveis|o que tem (para|pra) vender)\b/i;
 const CATALOG_MARKER = '__CATALOG__';
-const CATALOG_REGEX = /\b(catálogo|catalogo|produtos?|opções|opcoes|cardápio|cardapio|o que (vocês|voces|tu) (vende|tem|oferec|têm|tens)|me mostra|quero ver|mostrar (os )?produtos|lista de produtos|disponíveis|disponiveis|o que tem (para|pra) vender)\b/i;
+const FILTERED_CATALOG_PREFIX = '__CATALOG_FILTERED__:';
 
+const FULL_CATALOG_REGEX = /\b(catálogo completo|catalogo completo|catálogo inteiro|catalogo inteiro|quero ver o catálogo|quero ver o catalogo|me mostra o catálogo|me mostra o catalogo|me mostre o catálogo|me mostre o catalogo|todos os produtos|toda a loja|ver tudo|quero ver tudo|quero ver todos|mostrar todos|mostre todos|lista completa|todos vocês produtos|todos os produtos que vocês têm|todos os produtos que voces tem)\b/i;
+//const FILTERED_CATALOG_REQUEST_REGEX = /\b(?:o\s+)?(catálogo|catalogo)\s+(desses|dos)\s+produtos\b|\b(quero ver|me mostra|me mostre)\s+(esses|os)\s+produtos\b/i;
 
 interface SupabaseProduct {
   id: string;
@@ -115,9 +127,14 @@ export default function Chat() {
     if (!autoSpeakEnabled) return;
 
     const lastBotMessage = [...messages]
-      .reverse()
-      .find((m) => m.sender === 'bot' && m.content !== CATALOG_MARKER);
-
+  .reverse()
+  .find(
+    (m) =>
+      m.sender === 'bot' &&
+      m.content !== CATALOG_MARKER &&
+      !m.content.startsWith(FILTERED_CATALOG_PREFIX)
+  );
+    
     if (!lastBotMessage) return;
     if (lastAutoSpokenMessageIdRef.current === lastBotMessage.id) return;
     if (!cleanTextForSpeech(lastBotMessage.content)) return;
@@ -272,19 +289,24 @@ export default function Chat() {
     }
 
     isInitializingRef.current = true;
-    const convAtStart = conversationId;
-    (async () => {
-      try {
-        await addMessage(getWelcomeMessage(false), 'bot', 'Boas-vindas');
-        if (!contextProduct && supabaseProducts.length > 0) {
-          await addMessage(CATALOG_MARKER, 'bot', 'Catálogo');
-        }
-        initializedConvRef.current = convAtStart;
-      } finally {
-        isInitializingRef.current = false;
-      }
-    })();
-  }, [conversationId, conversationLoading, loadingProducts, messages.length, getWelcomeMessage, addMessage, contextProduct, supabaseProducts.length]);
+const convAtStart = conversationId;
+
+(async () => {
+  try {
+    // A abertura do atendimento mostra somente a saudação.
+    // O catálogo nunca é exibido automaticamente.
+    await addMessage(getWelcomeMessage(false), 'bot', 'Boas-vindas');
+
+    initializedConvRef.current = convAtStart;
+  } finally {
+    isInitializingRef.current = false;
+  }
+})();
+
+
+
+
+}, [conversationId, conversationLoading, loadingProducts, messages.length, getWelcomeMessage, addMessage, contextProduct, supabaseProducts.length]);
 
   // Handler para limpar conversa e iniciar novo atendimento.
   // A inserção da boas-vindas + catálogo é feita pelo useEffect acima
@@ -309,6 +331,7 @@ export default function Chat() {
       setIsClearing(false);
     }
   };
+
   const handleSend = async () => {
     const trimmedInput = inputValue.trim();
     if (!trimmedInput || isTyping) return;
@@ -317,47 +340,68 @@ export default function Chat() {
     setIsTyping(true);
     await addMessage(trimmedInput, 'user');
 
-    // Vitrine mode: intercept catalog questions and reply with cards (no AI call needed)
-    if (!contextProduct && CATALOG_REGEX.test(trimmedInput) && supabaseProducts.length > 0) {
-      const intro = supabaseProducts.length === 1
-        ? 'Temos atualmente este produto disponível. Toque abaixo para ver os detalhes 👇'
-        : `Veja os ${supabaseProducts.length} produtos disponíveis. Toque em "Saber mais" para conversar sobre um deles 👇`;
-      await addMessage(intro, 'bot', 'Catálogo');
-      await addMessage(CATALOG_MARKER, 'bot', 'Catálogo');
-      setIsTyping(false);
-      inputRef.current?.focus();
-      return;
-    }
+// Pedido explícito do catálogo completo.
+// Não mostramos todos os produtos dentro do chat.
+// Levamos o cliente para a vitrine, onde o catálogo completo já existe.
+if (!contextProduct && FULL_CATALOG_REGEX.test(trimmedInput)) {
+  const catalogLink = vitrineLink;
+
+  await addMessage(
+    `Claro! 🛍️ Você pode ver todos os nossos produtos diretamente na vitrine.\n\n👉 [Ver todos os produtos](${catalogLink})`,
+    'bot',
+    'Catálogo'
+  );
+
+  setIsTyping(false);
+  inputRef.current?.focus();
+  return;
+}
 
     try {
       const productsList = supabaseProducts.map(p => ({
-        id: p.id,
-        nome: p.name,
-        preco: Number(p.price),
-        descricao: p.short_description || p.long_description || '',
-        precoMinimo: p.min_price_allowed,
-        formasPagamento: p.payment_methods || [],
-        infoEntrega: p.delivery_info || ''
-      }));
+  id: p.id,
+  nome: p.name,
+  preco: Number(p.price),
+
+  // Texto público usado nos cards
+  descricao: p.short_description || '',
+
+  // Conhecimento interno da ANIA para entender
+  // quando este produto é relevante para o cliente.
+  conhecimentoIA: p.long_description || '',
+
+  categoria: p.category || '',
+
+  precoMinimo: p.min_price_allowed,
+  formasPagamento: p.payment_methods || [],
+  infoEntrega: p.delivery_info || '',
+  linkPagamento: p.payment_link || ''
+}));
 
       const productContext = contextProduct ? {
-        id: contextProduct.id,
-        nome: contextProduct.name,
-        preco: contextProduct.price,
-        descricao: contextProduct.long_description || contextProduct.short_description || '',
-        categoria: contextProduct.category || '',
-        precoMinimo: contextProduct.min_price_allowed,
-        formasPagamento: contextProduct.payment_methods || [],
-        infoEntrega: contextProduct.delivery_info || '',
-        linkPagamento: contextProduct.payment_link || ''
-      } : null;
+  id: contextProduct.id,
+  nome: contextProduct.name,
+  preco: contextProduct.price,
+
+  // Descrição pública
+  descricao: contextProduct.short_description || '',
+
+  // Conhecimento completo da ANIA sobre este produto
+  conhecimentoIA: contextProduct.long_description || '',
+
+  categoria: contextProduct.category || '',
+  precoMinimo: contextProduct.min_price_allowed,
+  formasPagamento: contextProduct.payment_methods || [],
+  infoEntrega: contextProduct.delivery_info || '',
+  linkPagamento: contextProduct.payment_link || ''
+} : null;
 
       const recentHistory = messages.slice(-6).map(m => ({
         role: m.sender === 'user' ? 'user' : 'assistant',
         content: m.content
       }));
 
-      const { data, error } = await supabase.functions.invoke('ai-fallback', {
+const { data, error } = await supabase.functions.invoke('ai-fallback', {
         body: {
           message: trimmedInput,
           businessName: tenantConfig?.business_name || config?.business_name || business.nome || 'Loja',
@@ -378,17 +422,56 @@ export default function Chat() {
       });
 
       if (error) {
-        await addMessage('Hmm, tive um problema. Pode repetir?', 'bot', 'Erro');
-      } else {
-        const response = data?.response || 'Como posso ajudar?';
-        await addMessage(response, 'bot', data?.closingUpdate?.isClosing ? 'Fechamento' : 'IA');
+  console.error('[Chat] Erro ao chamar ai-fallback:', error);
+  console.error('[Chat] Dados retornados pela função:', data);
 
-        if (data?.showCatalog && supabaseProducts.length > 0) {
-          await addMessage(CATALOG_MARKER, 'bot', 'Catálogo');
-        }
+  await addMessage(
+    `⚠️ Erro ao processar sua mensagem.\n\nDetalhes técnicos: ${error.message || 'erro desconhecido'}`,
+    'bot',
+    'Erro'
+  );
+} else {
+  const response = data?.response || 'Como posso ajudar?';
 
-        if (data?.negotiationUpdate) await updateNegotiation(data.negotiationUpdate);
-        if (data?.closingUpdate) await updateClosing(data.closingUpdate);
+  // Criamos o ID ANTES da mensagem existir no banco.
+  // Assim podemos preparar o áudio usando exatamente o mesmo ID.
+  const botMessageId = crypto.randomUUID();
+
+await addMessage(
+  response,
+  'bot',
+  data?.closingUpdate?.isClosing ? 'Fechamento' : 'IA',
+  botMessageId
+);
+  //if (data?.showCatalog && supabaseProducts.length > 0) {
+    //await addMessage(
+      //CATALOG_MARKER,
+      //'bot',
+      //'Catálogo'
+    //);
+  //}
+
+  if (data?.recommendedProductIds?.length) {
+  const validIds = data.recommendedProductIds.filter((id: string) =>
+    supabaseProducts.some(p => p.id === id)
+  );
+
+  if (validIds.length > 0) {
+    await addMessage(
+      `${FILTERED_CATALOG_PREFIX}${validIds.join(',')}`,
+      'bot',
+      'Produtos recomendados'
+    );
+  }
+} 
+
+  if (data?.negotiationUpdate) {
+    await updateNegotiation(data.negotiationUpdate);
+  }
+
+  if (data?.closingUpdate) {
+    await updateClosing(data.closingUpdate);
+  }
       }
 
     } catch (err) {
@@ -477,8 +560,8 @@ export default function Chat() {
           <h1 className="font-semibold text-foreground">{contextProduct?.name || storeName}</h1>
           <p className="text-xs text-muted-foreground">{isTyping ? 'Digitando...' : 'Online'}</p>
         </div>
-        
-        {/* Botão limpar conversa */}
+
+{/* Botão limpar conversa */}
         <Button
           variant="ghost"
           size="icon"
@@ -517,7 +600,11 @@ export default function Chat() {
         </Link>
       </header>
 
-      {/* Chat area - estilo WhatsApp */}
+
+
+
+
+{/* Chat area - estilo WhatsApp */}
       <main className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
         {/* Galeria de imagens do produto - exibida quando há galeria */}
         {contextProduct?.image_url && (contextProduct.has_gallery && galleryImages.length > 0) && (
@@ -533,8 +620,20 @@ export default function Chat() {
 
         {messages.map((message, index) => {
           const isCatalog = message.content === CATALOG_MARKER;
+const isFilteredCatalog = message.content.startsWith(FILTERED_CATALOG_PREFIX);
 
-          if (isCatalog) {
+const filteredProductIds = isFilteredCatalog
+  ? message.content
+      .replace(FILTERED_CATALOG_PREFIX, '')
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean)
+  : [];
+
+const catalogProducts = isFilteredCatalog
+  ? supabaseProducts.filter(p => filteredProductIds.includes(p.id))
+  : supabaseProducts;
+          if (isCatalog || isFilteredCatalog) {
             return (
               <div
                 key={message.id}
@@ -550,10 +649,10 @@ export default function Chat() {
                     style={chatCatalogCard ? { backgroundColor: chatCatalogCard, clipPath: 'polygon(100% 0, 100% 100%, 0 0)' } : { clipPath: 'polygon(100% 0, 100% 100%, 0 0)' }}
                   />
                   <div className="text-xs text-muted-foreground px-1 pb-1 font-medium">
-                    🛍️ Catálogo
-                  </div>
+  {isFilteredCatalog ? '🎯 Encontrei estas opções para você' : '🛍️ Catálogo'}
+</div>
                   <CatalogCards
-                    products={supabaseProducts.map(p => ({
+                  products={catalogProducts.map(p => ({
                       id: p.id,
                       name: p.name,
                       price: Number(p.price),
@@ -615,8 +714,9 @@ export default function Chat() {
                     speed={config?.assistant_voice_speed}
                   />
                 )}
-  
-<span className={`text-[10px] mt-1 block text-right ${
+
+
+                <span className={`text-[10px] mt-1 block text-right ${
                   message.sender === 'user' ? 'text-white/70' : 'text-muted-foreground'
                 }`}>
                   {message.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -750,7 +850,7 @@ export default function Chat() {
           initialIndex={galleryInitialIndex}
         />
       )}
-      </div>
+            </div>
     </div>
   );
 }
