@@ -10,7 +10,18 @@ interface ProductInfo {
   id: string;
   nome: string;
   preco: number;
+
+  // Descrição curta/publicada do produto
   descricao?: string;
+
+  // Conhecimento interno da ANIA sobre o produto.
+  // Usado para entender necessidades, perfil do cliente,
+  // características, benefícios, diferenciais, cuidados,
+  // restrições e situações em que o produto é relevante.
+  conhecimentoIA?: string;
+
+  categoria?: string;
+
   precoMinimo?: number | null;
   formasPagamento?: string[];
   infoEntrega?: string;
@@ -94,21 +105,6 @@ serve(async (req) => {
       aniaSettings?.fallback_message ||
       "Essa informação não está cadastrada no sistema no momento.";
 
-    // 🛡️ BLOQUEIO ABSOLUTO: modo vitrine (sem produto selecionado)
-    if (chatMode === 'vitrine') {
-      const msgLowerEarly = String(message || '').toLowerCase();
-      const negotiationRegex = /\b(desconto|descontos|menor|menos|baix(ar|a)|abaix(ar|a)|promo[cç][aã]o|barato|negoci(ar|ação|acao)|pix|cart[aã]o|parcel|parcelamento|à vista|a vista|boleto|pagar|pagamento|comprar|compro|fechar|finalizar|valor|preço|preco|quanto custa|quanto é|quanto e|prazo|acesso|certificado|benef[ií]cio|garantia|cupom|frete|entrega)\b/i;
-      if (negotiationRegex.test(msgLowerEarly)) {
-        return new Response(
-          JSON.stringify({
-            response: `Para que eu possa te ajudar corretamente, **escolha primeiro um produto do catálogo** disponível 👇\n\nToque em **"Saber mais"** no produto desejado para que eu possa te dar valores, condições e formas de pagamento específicas.`,
-            showCatalog: true
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    }
-
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
@@ -159,27 +155,50 @@ serve(async (req) => {
     // Verificar se já houve mensagens (não é primeira interação)
     const isFirstMessage = history.length === 0;
 
-    // Formatar catálogo em MARKDOWN ESTRUTURADO para a IA
-    const catalogMarkdown = productList.map((p: ProductInfo) => {
-      const price = Number(p.preco).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-      return `### 🔹 ${p.nome}
-**Preço:** ${price}
-${p.descricao ? `📝 ${p.descricao.substring(0, 100)}` : ''}
-👉 Clique para ver detalhes`;
-    }).join('\n\n');
+    // ============================================================
+// CONHECIMENTO DOS PRODUTOS PARA A ANIA
+// ============================================================
+//
+// A descrição curta é apenas informação pública.
+// O conhecimentoIA é o material que permite à ANIA
+// entender para quem o produto é relevante e em quais
+// necessidades ele pode ser recomendado.
+//
+// IMPORTANTE:
+// A IA nunca deve inventar informações que não estejam
+// cadastradas nesses campos.
+//
 
-    // Formatar catálogo simples para contexto interno
-    const catalogText = productList.map((p: ProductInfo) => {
-      const price = Number(p.preco).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-      const minPrice = p.precoMinimo 
-        ? Number(p.precoMinimo).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-        : null;
-      let line = `• ${p.nome}: ${price}`;
-      if (minPrice) line += ` (mínimo: ${minPrice})`;
-      if (p.descricao) line += ` - ${p.descricao.substring(0, 80)}`;
-      return line;
-    }).join('\n');
+const productKnowledgeText = productList.map((p: ProductInfo) => {
+  const price = Number(p.preco).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  });
 
+  return `
+═══════════════════════════════════════════
+PRODUTO
+ID: ${p.id}
+NOME: ${p.nome}
+CATEGORIA: ${p.categoria || '(não cadastrada)'}
+PREÇO: ${price}
+
+DESCRIÇÃO PÚBLICA:
+${p.descricao || '(não cadastrada)'}
+
+CONHECIMENTO DA ANIA:
+${p.conhecimentoIA || '(não cadastrado)'}
+
+PAGAMENTO:
+${p.formasPagamento?.length ? p.formasPagamento.join(', ') : '(não cadastrado)'}
+
+ENTREGA:
+${p.infoEntrega || '(não cadastrada)'}
+═══════════════════════════════════════════
+`;
+}).join('\n');
+
+    
     // Contexto de produto específico
     let focusedProductText = "";
     let focusedProduct: ProductContext | null = null;
@@ -214,7 +233,6 @@ IMPORTANTE: O cliente JÁ ESCOLHEU este produto. Foque apenas nele. NÃO liste o
     const isAskingIdentity = /\b(quem (é|e) você|quem (és|es) tu|você (é|e) quem|qual (é|e) seu nome|me apresent|se apresent)\b/.test(msgLower);
     
     // Detectar se cliente quer ver catálogo/produtos
-    const isAskingCatalog = /\b(catálogo|catalogo|produtos|opções|opcoes|o que (vocês|voces) (vende|tem|oferecem)|me mostra|quero ver|lista|cardápio|cardapio)\b/.test(msgLower);
     
     // Detectar se cliente está pedindo link de pagamento
     const isAskingPaymentLink = /\b(pix|link|pagar|pagamento|como (eu )?(pago|faco|faço)|me (manda|passa|envia) o link|quero (pagar|comprar)|finalizar|fechar pedido)\b/.test(msgLower);
@@ -278,7 +296,7 @@ ESTADO DA NEGOCIAÇÃO:
 - Link de pagamento oferecido? ${closing.hasOfferedPaymentLink ? 'SIM' : 'NÃO'}
 - Produto tem link? ${productHasPaymentLink ? 'SIM' : 'NÃO'}
 ═══════════════════════════════════════════`;
-
+ 
     // Lógica de desconto progressivo
     let discountGuidance = "";
     if (isAskingDiscount && focusedProduct && !isInClosingMode) {
@@ -308,9 +326,9 @@ AVISE CLARAMENTE que é o máximo e entre em MODO FECHAMENTO.`;
 - Novo preço a oferecer: R$ ${Math.max(suggestedPrice, minPrice).toFixed(2)}
 - É o máximo? ${isMaxReached ? 'SIM - AVISE O CLIENTE!' : 'NÃO'}`;
       }
-          }
-    
-  // Instruções para link de pagamento/fechamento
+    }
+
+    // Instruções para link de pagamento/fechamento
     let paymentLinkInstructions = "";
     if (isAskingPaymentLink && focusedProduct) {
       if (productHasPaymentLink) {
@@ -381,26 +399,72 @@ PRIORIDADE: Responda diretamente ao pedido do cliente.`;
       ? `\n⚠️ SUA ÚLTIMA RESPOSTA: "${lastBotResponse.substring(0, 80)}..."\nNÃO repita. Avance a conversa.`
       : '';
 
-    // Instruções de catálogo em Markdown
-    let catalogInstructions = "";
-    if (isAskingCatalog && !focusedProduct) {
-      catalogInstructions = `
-════════════════════════════════════════════
-📦 CLIENTE PEDIU CATÁLOGO - USE MARKDOWN!
-════════════════════════════════════════════
-FORMATO OBRIGATÓRIO:
+    // ============================================================
+// RECOMENDAÇÃO INTELIGENTE DE PRODUTOS
+// ============================================================
 
-## 🛍️ Produtos disponíveis na ${storeName}
+const recommendationInstructions = chatMode === 'vitrine' && !focusedProduct
+  ? `
+════════════════════════════════════════════════════════════
+🎯 RECOMENDAÇÃO INTELIGENTE DE PRODUTOS
+════════════════════════════════════════════════════════════
 
-${catalogMarkdown}
+Você está atendendo na vitrine geral.
 
-REGRAS:
-- Cada produto em bloco separado
-- Nome em **negrito**
-- Preço destacado
-- NUNCA listar em texto corrido
-════════════════════════════════════════════`;
-    }
+NÃO apresente automaticamente todos os produtos.
+
+Use o bloco "CONHECIMENTO DA ANIA" de cada produto para
+entender a necessidade do cliente.
+
+Seu trabalho é agir como uma vendedora:
+
+1. Entenda o que o cliente está procurando.
+2. Compare a necessidade dele com o conhecimento cadastrado
+   dos produtos.
+3. Se houver correspondência clara, recomende somente os
+   produtos relevantes.
+4. Se houver várias opções realmente pertinentes, selecione
+   no máximo 3.
+5. Se a necessidade ainda estiver vaga, faça uma pergunta
+   curta para entender melhor antes de recomendar.
+6. Se nenhum produto cadastrado atender claramente à
+   necessidade, não invente uma solução.
+7. Nunca recomende um produto apenas porque ele existe.
+8. Nunca invente benefícios, indicações, resultados,
+   contraindicações ou características.
+9. À medida que o cliente fornecer mais informações, refine
+   a recomendação.
+
+QUANDO RECOMENDAR PRODUTOS:
+
+Ao final da resposta, acrescente uma linha técnica neste formato:
+
+[[PRODUCTS:ID1,ID2]]
+
+Use somente os IDs dos produtos que realmente são relevantes.
+
+Exemplo:
+
+"Para o que você está procurando, encontrei uma opção que
+pode fazer sentido para você. Dá uma olhada abaixo 👇
+
+[[PRODUCTS:ID_DO_PRODUTO]]"
+
+Se houver duas opções:
+
+[[PRODUCTS:ID1,ID2]]
+
+Se ainda não houver informação suficiente para recomendar,
+NÃO use o marcador.
+
+Se nenhum produto for relevante, NÃO use o marcador.
+
+O marcador é interno e será removido antes de chegar ao cliente.
+
+════════════════════════════════════════════════════════════
+`
+  : '';
+   
 
     // Instruções de identidade
     let identityInstructions = "";
@@ -487,27 +551,33 @@ ${globalConfigBlock}
 ${identityInstructions}
 
 ════════════════════════════════════════════
-📦 REGRAS DE LISTAGEM DE PRODUTOS
+📦 REGRAS DE APRESENTAÇÃO DE PRODUTOS
 ════════════════════════════════════════════
-Quando listar produtos, SEMPRE use Markdown estruturado:
 
-## 🛍️ Produtos disponíveis na ${storeName}
+Na vitrine geral:
 
-### 🔹 Nome do Produto
-**Preço:** R$ XX,XX
-👉 Clique para ver detalhes
+- NÃO apresente todos os produtos automaticamente.
+- NÃO transforme a conversa em um catálogo completo.
+- Recomende somente produtos relacionados à necessidade
+  demonstrada pelo cliente.
+- Você pode recomendar no máximo 3 produtos por resposta.
+- Se não houver informação suficiente, faça uma pergunta
+  para descobrir a necessidade.
+- Se houver uma correspondência clara, recomende o produto
+  e deixe os cards da interface apresentarem os detalhes.
 
-(Repetir para cada produto)
+Os cards possuem os botões:
+👉 Saber mais
+🛒 Adquirir agora
 
-NUNCA liste em texto corrido ou parágrafo único.
-Mantenha leitura limpa e visual clara.
+Não é necessário criar manualmente cards em Markdown.
 
-${catalogInstructions}
+${recommendationInstructions}
 
 ════════════════════════════════════════════
-📋 CATÁLOGO INTERNO
+ 📋 CONHECIMENTO DOS PRODUTOS
 ════════════════════════════════════════════
-${catalogText}
+${productKnowledgeText}
 ${focusedProductText}
 
 ${negotiationInfo}
@@ -534,8 +604,7 @@ REGRAS:
 - Nunca assumir método de pagamento sem confirmação
 - NUNCA inventar links
 - NUNCA usar placeholders como [LINK AQUI]
-
-════════════════════════════════════════════
+  ════════════════════════════════════════════
 🎯 FOCO NO PRODUTO SELECIONADO
 ════════════════════════════════════════════
 Quando o cliente demonstrar interesse em um produto:
@@ -572,25 +641,46 @@ Conduza o cliente até a decisão final.
 ${chatMode === 'vitrine' ? `
 ════════════════════════════════════════════
 🛍️ MODO VITRINE (sem produto selecionado)
+🛍️ MODO VITRINE
 ════════════════════════════════════════════
-O cliente está conversando na vitrine geral, SEM ter escolhido um produto.
+O cliente está conversando na vitrine geral, sem ter escolhido um produto.
 
-VOCÊ PODE:
-- Apresentar o catálogo da loja
-- Ajudar o cliente a escolher um produto
-- Explicar de forma resumida o que cada produto oferece
-- Encaminhar o cliente para o atendimento específico do produto
+A ANIA deve agir como uma VENDEDORA CONSULTIVA.
 
-VOCÊ NÃO PODE (PROIBIDO):
-❌ Negociar preços ou oferecer descontos
-❌ Gerar PIX, links de pagamento ou qualquer link de cobrança
-❌ Prometer promoções, brindes ou condições não cadastradas
-❌ Fechar venda aqui
+PRIMEIRO — ENTENDER A NECESSIDADE:
+- Descubra o que o cliente procura.
+- Use o CONHECIMENTO DA ANIA dos produtos para entender quais produtos podem atender à necessidade apresentada.
+- Se ainda não houver informação suficiente, faça uma pergunta curta e natural para entender melhor.
+- NÃO recomende produtos apenas porque eles existem no catálogo.
 
-SEMPRE que o cliente demonstrar interesse em um produto específico, oriente:
-"Toque em 👉 *Saber mais* no card do produto para falar diretamente sobre ele 😊"
+QUANDO HOUVER CORRESPONDÊNCIA:
+- Recomende somente os produtos realmente relacionados à necessidade do cliente.
+- Use o marcador interno [[PRODUCTS:ID1,ID2]] para exibir os cards correspondentes.
+- Mostre no máximo 3 produtos.
+- Explique brevemente por que aqueles produtos podem fazer sentido para a necessidade apresentada.
+- Os cards da interface já possuem os botões "Saber mais" e "Adquirir agora".
+- NÃO crie cards manualmente em Markdown.
 
-A negociação e o fechamento acontecem APENAS no atendimento específico de cada produto.
+REFINAMENTO DA RECOMENDAÇÃO:
+- Conforme o cliente fornecer novas informações, refine a recomendação.
+- Pode substituir ou reduzir os produtos anteriormente recomendados.
+- Se nenhum produto atender claramente à necessidade, não force uma recomendação.
+
+CATÁLOGO COMPLETO:
+- NUNCA liste todos os produtos automaticamente na conversa.
+- NUNCA apresente todos os produtos apenas porque o cliente iniciou o chat.
+- Se o cliente pedir para ver o catálogo completo, a interface cuidará de encaminhá-lo para a vitrine completa.
+- Nesse caso, NÃO use [[PRODUCTS:...]] para mostrar todos os produtos.
+
+FECHAMENTO:
+- Na vitrine geral, ajude o cliente a descobrir o produto adequado.
+- Quando o cliente entrar no atendimento específico de um produto, o fluxo de negociação e fechamento poderá continuar normalmente.
+
+REGRAS ABSOLUTAS:
+- Nunca invente informações que não estejam cadastradas.
+- Nunca invente benefícios, resultados, indicações, contraindicações, características ou condições comerciais.
+- Se uma informação não estiver cadastrada, use a mensagem de fallback definida pela ANIA.
+════════════════════════════════════════════
 ` : ''}`;
 
     // Montar mensagens com histórico
@@ -641,6 +731,37 @@ A negociação e o fechamento acontecem APENAS no atendimento específico de cad
     const data = await response.json();
     let aiResponse = data.choices?.[0]?.message?.content || 
       `Oi! Sou a ANIA da ${storeName}. Como posso te ajudar?`;
+  // ============================================================
+// EXTRAIR RECOMENDAÇÕES DOS PRODUTOS
+// ============================================================
+//
+// A IA pode devolver:
+// [[PRODUCTS:id1,id2]]
+//
+// O marcador é removido da mensagem antes de chegar ao cliente.
+// Os IDs são devolvidos separadamente para o frontend exibir
+// somente os cards correspondentes.
+//
+
+let recommendedProductIds: string[] = [];
+
+const productMarkerMatch = aiResponse.match(
+  /\[\[PRODUCTS:([a-zA-Z0-9_,-]+)\]\]/i
+);
+
+if (productMarkerMatch) {
+  recommendedProductIds = productMarkerMatch[1]
+    .split(',')
+    .map((id: string) => id.trim())
+    .filter((id: string) =>
+      productList.some((product: ProductInfo) => product.id === id)
+    )
+    .slice(0, 3);
+
+  aiResponse = aiResponse
+    .replace(productMarkerMatch[0], '')
+    .trim();
+}
 
     // Calcular atualizações de estado
     let negotiationUpdate: Partial<NegotiationState> | null = null;
@@ -695,13 +816,14 @@ A negociação e o fechamento acontecem APENAS no atendimento específico de cad
     }
 
     return new Response(
-      JSON.stringify({ 
-        response: aiResponse,
-        negotiationUpdate,
-        closingUpdate
-      }), 
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  JSON.stringify({
+    response: aiResponse,
+    recommendedProductIds,
+    negotiationUpdate,
+    closingUpdate,
+  }),
+  { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+);
 
   } catch (error) {
     console.error("ai-fallback error:", error);
@@ -714,3 +836,5 @@ A negociação e o fechamento acontecem APENAS no atendimento específico de cad
     );
   }
 });
+
+
