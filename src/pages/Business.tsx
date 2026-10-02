@@ -21,6 +21,7 @@ import { VitrineHero } from '@/components/vitrine/VitrineHero';
 import { themes, getThemeForCategory } from '@/lib/themes';
 import { stripAssetVersion, versionAssetUrl } from '@/lib/versioned-assets';
 import { toast } from 'sonner';
+import { useNiches } from '@/hooks/useNiches';
 
 const categories = [
   'Loja de Roupas', 'Restaurante', 'Salão de Beleza', 'Pet Shop',
@@ -28,6 +29,7 @@ const categories = [
 ];
 
 export default function Business() {
+  const { niches, loading: nichesLoading, setShowOnLanding } = useNiches();
   const { business, updateBusiness } = useApp();
   const { config, updateConfig } = useBusinessConfig();
   const { deleteImage } = useProductImageUpload();
@@ -410,6 +412,34 @@ export default function Business() {
           <p className="text-xs text-muted-foreground">
             Ao salvar, este ícone será aplicado automaticamente na tela de abertura, na aba do navegador,
             no manifest do PWA e na tela inicial do celular. Recomendado: PNG quadrado de 512×512px.
+          </p>
+        </SectionCard>
+
+        {/* NICHOS DA VITRINE */}
+        <SectionCard
+          icon={<Layout className="w-5 h-5 text-primary" />}
+          title="Nichos da Vitrine"
+          subtitle="Escolha quais nichos serão exibidos na sua Landing Page."
+        >
+          {nichesLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+          ) : (
+            <div className="divide-y divide-border">
+              {niches.map((n) => (
+                <div key={n.id} className="flex items-center justify-between py-3 gap-3">
+                  <Label htmlFor={`niche-${n.id}`} className="text-sm font-medium cursor-pointer">{n.name}</Label>
+                  <Switch
+                    id={`niche-${n.id}`}
+                    checked={n.show_on_landing}
+                    onCheckedChange={(v) => setShowOnLanding(n.id, v)}
+                    aria-label={`Exibir ${n.name} na vitrine`}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Nichos ocultos continuam existindo e podem ser usados nos produtos normalmente.
           </p>
         </SectionCard>
 

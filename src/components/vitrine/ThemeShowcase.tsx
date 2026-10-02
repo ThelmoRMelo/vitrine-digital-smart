@@ -7,6 +7,7 @@ import {
   MessageCircle,
   Stethoscope,
   Tag,
+  PawPrint,
   type LucideIcon,
 } from 'lucide-react';
 import type { ThemeConfig } from '@/lib/themes';
@@ -16,8 +17,10 @@ interface ThemeShowcaseProps {
   theme: ThemeConfig;
   chatPath: string;
   niches?: Niche[];
+  nichesLoading?: boolean;
   selectedNicheSlug?: string | null;
   onSelectNiche?: (slug: string) => void;
+  onClearNiche?: () => void;
 }
 
 // Ícones disponíveis para os nichos (nome salvo no banco -> componente)
@@ -29,31 +32,27 @@ const iconMap: Record<string, LucideIcon> = {
   GraduationCap,
   MessageCircle,
   Tag,
+  PawPrint,
 };
-
-// Fallback usado quando a lista de nichos do banco ainda não carregou
-const fallbackNiches = [
-  { slug: 'saude', name: 'Saúde', icon: 'Stethoscope', color: 'hsl(180, 60%, 45%)' },
-  { slug: 'beleza', name: 'Beleza', icon: 'Heart', color: 'hsl(340, 80%, 65%)' },
-  { slug: 'financas', name: 'Finanças', icon: 'Briefcase', color: 'hsl(210, 90%, 55%)' },
-  { slug: 'tecnologia', name: 'Tecnologia', icon: 'Smartphone', color: 'hsl(260, 80%, 60%)' },
-  { slug: 'educacao', name: 'Educação', icon: 'GraduationCap', color: 'hsl(45, 100%, 55%)' },
-  { slug: 'atendimento', name: 'Atendimento', icon: 'MessageCircle', color: 'hsl(190, 100%, 50%)' },
-];
 
 export function ThemeShowcase({
   theme,
   chatPath,
   niches,
+  nichesLoading,
   selectedNicheSlug,
   onSelectNiche,
+  onClearNiche,
 }: ThemeShowcaseProps) {
-  const items = (niches && niches.length > 0 ? niches : fallbackNiches).map((n) => ({
+  // Fonte única: tabela niches; somente os habilitados para a Landing
+  const items = (niches ?? []).filter((n) => n.show_on_landing).map((n) => ({
     slug: n.slug,
     name: n.name,
     icon: iconMap[n.icon || 'Tag'] ?? Tag,
     color: n.color || 'hsl(190, 100%, 50%)',
   }));
+
+  if (!nichesLoading && items.length === 0) return null;
 
   return (
     <section className="py-12 md:py-16">
