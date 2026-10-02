@@ -8,6 +8,7 @@ import {
   Stethoscope,
   Tag,
   PawPrint,
+  LayoutGrid,
   type LucideIcon,
 } from 'lucide-react';
 import type { ThemeConfig } from '@/lib/themes';
@@ -69,6 +70,25 @@ export function ThemeShowcase({
       </div>
 
       <div className="flex flex-wrap justify-center gap-6 md:gap-10">
+        <button
+          type="button"
+          onClick={() => onClearNiche?.()}
+          aria-pressed={!selectedNicheSlug}
+          aria-label="Ver todos os produtos"
+        >
+          <div className="flex flex-col items-center gap-3 group cursor-pointer">
+            <div
+              className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl flex items-center justify-center bg-primary/10 transition-all duration-300 group-hover:scale-110 group-hover:shadow-glow ${
+                !selectedNicheSlug ? 'ring-2 ring-primary scale-110 shadow-glow' : ''
+              }`}
+            >
+              <LayoutGrid className="w-8 h-8 md:w-10 md:h-10 text-primary" />
+            </div>
+            <span className={`text-sm font-medium ${!selectedNicheSlug ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'}`}>
+              Todos os produtos
+            </span>
+          </div>
+        </button>
         {items.map((niche) => {
           const isSelected = selectedNicheSlug === niche.slug;
 
