@@ -7,6 +7,8 @@ import {
   MessageCircle,
   Stethoscope,
   Tag,
+  PawPrint,
+  LayoutGrid,
   type LucideIcon,
 } from 'lucide-react';
 import type { ThemeConfig } from '@/lib/themes';
@@ -16,8 +18,10 @@ interface ThemeShowcaseProps {
   theme: ThemeConfig;
   chatPath: string;
   niches?: Niche[];
+  nichesLoading?: boolean;
   selectedNicheSlug?: string | null;
   onSelectNiche?: (slug: string) => void;
+  onClearNiche?: () => void;
 }
 
 // Ícones disponíveis para os nichos (nome salvo no banco -> componente)
@@ -29,31 +33,27 @@ const iconMap: Record<string, LucideIcon> = {
   GraduationCap,
   MessageCircle,
   Tag,
+  PawPrint,
 };
-
-// Fallback usado quando a lista de nichos do banco ainda não carregou
-const fallbackNiches = [
-  { slug: 'saude', name: 'Saúde', icon: 'Stethoscope', color: 'hsl(180, 60%, 45%)' },
-  { slug: 'beleza', name: 'Beleza', icon: 'Heart', color: 'hsl(340, 80%, 65%)' },
-  { slug: 'financas', name: 'Finanças', icon: 'Briefcase', color: 'hsl(210, 90%, 55%)' },
-  { slug: 'tecnologia', name: 'Tecnologia', icon: 'Smartphone', color: 'hsl(260, 80%, 60%)' },
-  { slug: 'educacao', name: 'Educação', icon: 'GraduationCap', color: 'hsl(45, 100%, 55%)' },
-  { slug: 'atendimento', name: 'Atendimento', icon: 'MessageCircle', color: 'hsl(190, 100%, 50%)' },
-];
 
 export function ThemeShowcase({
   theme,
   chatPath,
   niches,
+  nichesLoading,
   selectedNicheSlug,
   onSelectNiche,
+  onClearNiche,
 }: ThemeShowcaseProps) {
-  const items = (niches && niches.length > 0 ? niches : fallbackNiches).map((n) => ({
+  // Fonte única: tabela niches; somente os habilitados para a Landing
+  const items = (niches ?? []).filter((n) => n.show_on_landing).map((n) => ({
     slug: n.slug,
     name: n.name,
     icon: iconMap[n.icon || 'Tag'] ?? Tag,
     color: n.color || 'hsl(190, 100%, 50%)',
   }));
+
+  if (!nichesLoading && items.length === 0) return null;
 
   return (
     <section className="py-12 md:py-16">
@@ -70,6 +70,25 @@ export function ThemeShowcase({
       </div>
 
       <div className="flex flex-wrap justify-center gap-6 md:gap-10">
+        <button
+          type="button"
+          onClick={() => onClearNiche?.()}
+          aria-pressed={!selectedNicheSlug}
+          aria-label="Ver todos os produtos"
+        >
+          <div className="flex flex-col items-center gap-3 group cursor-pointer">
+            <div
+              className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl flex items-center justify-center bg-primary/10 transition-all duration-300 group-hover:scale-110 group-hover:shadow-glow ${
+                !selectedNicheSlug ? 'ring-2 ring-primary scale-110 shadow-glow' : ''
+              }`}
+            >
+              <LayoutGrid className="w-8 h-8 md:w-10 md:h-10 text-primary" />
+            </div>
+            <span className={`text-sm font-medium ${!selectedNicheSlug ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'}`}>
+              Todos os produtos
+            </span>
+          </div>
+        </button>
         {items.map((niche) => {
           const isSelected = selectedNicheSlug === niche.slug;
 

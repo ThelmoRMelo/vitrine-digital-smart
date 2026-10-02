@@ -70,7 +70,7 @@ export default function Vitrine() {
   const { slug } = useParams<{ slug?: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { niches } = useNiches();
+  const { niches, loading: nichesLoading } = useNiches();
   const selectedNicheSlug = searchParams.get('nicho');
   
   const [loading, setLoading] = useState(true);
@@ -181,7 +181,7 @@ export default function Vitrine() {
 
   // Nicho selecionado via URL (?nicho=slug)
   const selectedNiche = useMemo(
-    () => niches.find(n => n.slug === selectedNicheSlug) ?? null,
+    () => niches.find(n => n.slug === selectedNicheSlug && n.show_on_landing) ?? null,
     [niches, selectedNicheSlug]
   );
 
@@ -330,7 +330,7 @@ export default function Vitrine() {
               <ShoppingBag className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-xl font-semibold mb-2">
                 {selectedNiche
-                  ? `Ainda não há produtos em ${selectedNiche.name}`
+                  ? 'Ainda não temos produtos disponíveis neste nicho.'
                   : 'Nenhum produto disponível'}
               </h3>
               <p className="text-muted-foreground mb-4">Em breve teremos novidades!</p>
@@ -384,6 +384,8 @@ export default function Vitrine() {
           theme={theme}
           chatPath={chatPath}
           niches={niches}
+          nichesLoading={nichesLoading}
+          onClearNiche={clearNiche}
           selectedNicheSlug={selectedNicheSlug}
           onSelectNiche={handleSelectNiche}
         />

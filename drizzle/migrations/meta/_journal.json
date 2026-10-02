@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790969500649,
+      "tag": "0000_niches_show_on_landing_pet_shop",
+      "breakpoints": true
+    }
+  ]
+}
