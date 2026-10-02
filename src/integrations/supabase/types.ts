@@ -342,6 +342,7 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          show_on_landing: boolean
           slug: string
           tenant_id: string | null
           updated_at: string
@@ -354,6 +355,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          show_on_landing?: boolean
           slug: string
           tenant_id?: string | null
           updated_at?: string
@@ -366,6 +368,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          show_on_landing?: boolean
           slug?: string
           tenant_id?: string | null
           updated_at?: string
