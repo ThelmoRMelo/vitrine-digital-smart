@@ -90,9 +90,6 @@ Deno.serve(async (req) => {
       return json({ error: friendly("connection"), code: "connection" }, 200);
     }
 
-    if (!product.title && !product.coverImage && !product.price) {
-      return json({ error: friendly("not_found"), code: "not_found" }, 200);
-    }
 /**
  * Segurança para importações do Mercado Livre:
  *
@@ -114,7 +111,10 @@ if (product.platform === "mercado_livre" && !product.externalId) {
   );
 }
 
-    
+    if (!product.title && !product.coverImage && !product.price) {
+      return json({ error: friendly("not_found"), code: "not_found" }, 200);
+    }
+
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
     // Duplicidade:
