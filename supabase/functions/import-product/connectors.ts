@@ -186,6 +186,7 @@ interface JsonLdProduct {
   description?: string;
   image?: string | string[];
   category?: string;
+  url?: string;
   offers?: { price?: string | number; lowPrice?: string | number } | Array<{ price?: string | number }>;
 }
 
@@ -276,6 +277,111 @@ export function fromPublicMetadata(
   return withMissing(base);
 }
 
+/**
+ * Extrai a URL canônica declarada pela própria página.
+ * Isso é importante para links curtos/afiliados que podem
+ * redirecionar para páginas intermediárias.
+ */
+function canonicalUrl(html: string | null): string | null {
+  if (!html) return null;
+
+  const relFirst = html.match(
+    /<link[^>]+rel=["'][^"']*\bcanonical\b[^"']*["'][^>]+href=["']([^"']+)["']/i,
+  );
+
+  if (relFirst?.[1]) {
+    return decodeEntities(relFirst[1]);
+  }
+
+  const hrefFirst = html.match(
+    /<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*\bcanonical\b[^"']*["']/i,
+  );
+
+  return hrefFirst?.[1] ? decodeEntities(hrefFirst[1]) : null;
+}
+
+/**
+ * Extrai um ID real de produto do Mercado Livre a partir
+ * de uma URL confiável.
+ *
+ * IMPORTANTE:
+ * Não procuramos mais simplesmente o primeiro MLBxxxx
+ * encontrado em todo o HTML da página.
+ */
+function extractMercadoLivreProductIdFromUrl(value: string | null): string | null {
+  if (!value) return null;
+
+  const match = value.match(/\bMLB-?(\d{6,})\b/i);
+
+  return match ? `MLB${match[1]}` : null;
+}
+
+/**
+ * Identifica o produto do Mercado Livre somente através
+ * de fontes que representam a URL do produto:
+ *
+ * 1. URL final do redirecionamento
+ * 2. URL canônica
+ * 3. og:url
+ * 4. URL do JSON-LD Product
+ *
+ * Não utiliza mais o primeiro MLB encontrado aleatoriamente
+ * no HTML.
+ */
+function extractMercadoLivreProductId(
+  finalUrl: string,
+  html: string | null,
+): string | null {
+  // 1. URL final do redirecionamento
+  const fromFinalUrl = extractMercadoLivreProductIdFromUrl(finalUrl);
+
+  if (fromFinalUrl) {
+    return fromFinalUrl;
+  }
+
+  if (!html) {
+    return null;
+  }
+
+  // 2. URL canônica
+  const fromCanonical = extractMercadoLivreProductIdFromUrl(
+    canonicalUrl(html),
+  );
+
+  if (fromCanonical) {
+    return fromCanonical;
+  }
+
+  // 3. og:url
+  const ogUrl = metaContent(html, ["og:url"]);
+
+  const fromOgUrl = extractMercadoLivreProductIdFromUrl(ogUrl);
+
+  if (fromOgUrl) {
+    return fromOgUrl;
+  }
+
+  // 4. JSON-LD Product
+  const ld = jsonLdProduct(html);
+
+  const fromJsonLd = extractMercadoLivreProductIdFromUrl(
+    ld?.url ?? null,
+  );
+
+  if (fromJsonLd) {
+    return fromJsonLd;
+  }
+
+  // Não usamos mais:
+  //
+  // html.match(/(ML[A-Z])-?(\d{6,})/i)
+  //
+  // porque isso pode capturar o ID de outro produto
+  // recomendado ou relacionado dentro da mesma página.
+
+  return null;
+}
+
 function titleTag(html: string): string | null {
   const m = html.match(/<title[^>]*>([\s\S]{1,300}?)<\/title>/i);
   return m ? decodeEntities(m[1]) : null;
@@ -316,62 +422,146 @@ async function fetchMercadoLivreReviews(itemId: string, sourceUrl: string): Prom
 }
 
 const mercadoLivre: Connector = {
+const mercadoLivre: Connector = {
   id: "mercado_livre",
   label: "Mercado Livre",
-  matches: (u) => /(^|\.)mercadolivre\.com|(^|\.)mercadolibre\.com|(^|\.)mercadolivre\.com\.br|mlb\.la/i.test(u.hostname),
+
+  matches: (u) =>
+    /(^|\.)mercadolivre\.com|(^|\.)mercadolibre\.com|(^|\.)mercadolivre\.com\.br|meli\.la/i.test(
+      u.hostname,
+    ),
+
   fetchProduct: async (finalUrl, html) => {
-    const idMatch = finalUrl.match(/(ML[A-Z])-?(\d{6,})/i) ?? html?.match(/(ML[A-Z])-?(\d{6,})/i) ?? null;
-    const itemId = idMatch ? `${idMatch[1].toUpperCase()}${idMatch[2]}` : null;
+    /**
+     * IMPORTANTE:
+     * Nunca mais usamos o primeiro MLB encontrado aleatoriamente
+     * no HTML.
+     *
+     * Isso evita que uma página intermediária do meli.la contendo
+     * vários produtos faça o sistema importar um produto diferente
+     * daquele enviado pelo usuário.
+     */
+    const itemId = extractMercadoLivreProductId(finalUrl, html);
 
     if (itemId) {
       try {
-        const res = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
-          headers: { Accept: "application/json" },
-        });
+        const res = await fetch(
+          `https://api.mercadolibre.com/items/${itemId}`,
+          {
+            headers: {
+              Accept: "application/json",
+            },
+          },
+        );
+
         if (res.ok) {
           const item = await res.json();
+
           let category: string | null = null;
+
           if (item.category_id) {
             try {
-              const catRes = await fetch(`https://api.mercadolibre.com/categories/${item.category_id}`);
-              if (catRes.ok) category = (await catRes.json())?.name ?? null;
-            } catch (_e) { /* opcional */ }
+              const catRes = await fetch(
+                `https://api.mercadolibre.com/categories/${item.category_id}`,
+              );
+
+              if (catRes.ok) {
+                category = (await catRes.json())?.name ?? null;
+              }
+            } catch (_e) {
+              // Categoria é opcional.
+            }
           }
+
           let description: string | null = null;
+
           try {
-            const dRes = await fetch(`https://api.mercadolibre.com/items/${itemId}/description`);
-            if (dRes.ok) description = (await dRes.json())?.plain_text ?? null;
-          } catch (_e) { /* opcional */ }
+            const dRes = await fetch(
+              `https://api.mercadolibre.com/items/${itemId}/description`,
+            );
+
+            if (dRes.ok) {
+              description = (await dRes.json())?.plain_text ?? null;
+            }
+          } catch (_e) {
+            // Descrição é opcional.
+          }
 
           const pics: string[] = uniq(
-            (item.pictures ?? []).map((p: { secure_url?: string; url?: string }) => p.secure_url || p.url || ""),
+            (item.pictures ?? []).map(
+              (p: { secure_url?: string; url?: string }) =>
+                p.secure_url || p.url || "",
+            ),
           );
+
           const attrs = (item.attributes ?? [])
-            .filter((a: { name?: string; value_name?: string }) => a?.name && a?.value_name)
+            .filter(
+              (a: { name?: string; value_name?: string }) =>
+                a?.name && a?.value_name,
+            )
             .slice(0, 12)
-            .map((a: { name: string; value_name: string }) => `${a.name}: ${a.value_name}`)
+            .map(
+              (a: { name: string; value_name: string }) =>
+                `${a.name}: ${a.value_name}`,
+            )
             .join("\n");
+
+          const productUrl = item.permalink || finalUrl;
 
           return withMissing({
             platform: "mercado_livre",
             platformLabel: "Mercado Livre",
+
+            // ID real confirmado pela API do Mercado Livre.
             externalId: itemId,
-            sourceUrl: item.permalink || finalUrl,
+
+            // URL canônica real do produto.
+            sourceUrl: productUrl,
+
             title: item.title ?? null,
+
             price: toNumber(item.price),
+
             category,
+
             shortDescription: item.title ?? null,
-            longDescription: [description, attrs].filter(Boolean).join("\n\n") || null,
+
+            longDescription:
+              [description, attrs].filter(Boolean).join("\n\n") || null,
+
             coverImage: pics[0] ?? item.thumbnail ?? null,
+
             galleryImages: pics.slice(1, 6),
+
             missingFields: [],
-            reviews: await fetchMercadoLivreReviews(itemId, item.permalink || finalUrl),
+
+            reviews: await fetchMercadoLivreReviews(
+              itemId,
+              productUrl,
+            ),
           });
         }
-      } catch (_e) { /* cai no fallback de metadados */ }
+      } catch (_e) {
+        // Cai para tratamento abaixo.
+      }
     }
 
-    return fromPublicMetadata("mercado_livre", "Mercado Livre", finalUrl, html, itemId);
+    /**
+     * Se o link não permitiu identificar um ID confiável,
+     * não tentamos escolher aleatoriamente outro MLB existente
+     * no HTML.
+     *
+     * O fallback de metadados ainda pode ser utilizado quando
+     * a página realmente representa um produto, mas nunca mais
+     * usamos o primeiro MLB encontrado na página.
+     */
+    return fromPublicMetadata(
+      "mercado_livre",
+      "Mercado Livre",
+      finalUrl,
+      html,
+      itemId,
+    );
   },
 };
 
