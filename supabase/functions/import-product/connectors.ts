@@ -382,6 +382,85 @@ function extractMercadoLivreProductId(
   return null;
 }
 
+
+/**
+ * Links meli.la de afiliado redirecionam para uma página "social" do afiliado
+ * (/social/<perfil>), que lista vários produtos recomendados. O produto realmente
+ * compartilhado vem declarado em "shared_item":{"id":"MLB...","type":"ITEM"}.
+ * Usamos SOMENTE esse ID e o card (polycard) cujo metadata.id é igual a ele.
+ */
+function isMercadoLivreSocialPage(url: string): boolean {
+  try { return /\/social\//i.test(new URL(url).pathname); } catch { return false; }
+}
+
+function extractSharedItemId(html: string): string | null {
+  const m = html.match(/"shared_item"\s*:\s*\{\s*"id"\s*:\s*"(MLB\d{6,})"\s*,\s*"type"\s*:\s*"ITEM"/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+// deno-lint-ignore no-explicit-any
+function findSharedPolycard(html: string, itemId: string): any | null {
+  const marker = '"polycards":';
+  let from = 0;
+  while (true) {
+    const i = html.indexOf(marker, from);
+    if (i < 0) return null;
+    from = i + marker.length;
+    const start = from;
+    if (html[start] !== "[") continue;
+    // Recorta o array JSON balanceando colchetes (respeitando strings)
+    let depth = 0, inStr = false, esc = false, end = -1;
+    for (let j = start; j < html.length && j < start + 400_000; j++) {
+      const ch = html[j];
+      if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true;
+      else if (ch === "[" || ch === "{") depth++;
+      else if (ch === "]" || ch === "}") { depth--; if (depth === 0) { end = j + 1; break; } }
+    }
+    if (end < 0) continue;
+    try {
+      const cards = JSON.parse(html.slice(start, end));
+      // deno-lint-ignore no-explicit-any
+      const card = (cards as any[]).find((c) => c?.metadata?.id?.toUpperCase() === itemId);
+      if (card) return card;
+    } catch { /* continua procurando */ }
+  }
+}
+
+function productFromSocialPage(finalUrl: string, html: string): NormalizedProduct | null {
+  const itemId = extractSharedItemId(html);
+  if (!itemId) return null;
+  const card = findSharedPolycard(html, itemId);
+  if (!card) return null;
+  // deno-lint-ignore no-explicit-any
+  const comps: any[] = Array.isArray(card.components) ? card.components : [];
+  const title = comps.find((c) => c?.type === "title")?.title?.text ?? null;
+  const price = toNumber(comps.find((c) => c?.type === "price")?.price?.current_price?.value);
+  // deno-lint-ignore no-explicit-any
+  const pics: string[] = (card.pictures?.pictures ?? []).map((p: any) => p?.id).filter(Boolean)
+    .map((id: string) => `https://http2.mlstatic.com/D_NQ_NP_2X_${id}-O.webp`);
+  const base = typeof card.metadata?.url === "string" ? card.metadata.url : null;
+  const sourceUrl = base
+    ? `https://${base.replace(/^https?:\/\//, "")}?pdp_filters=item_id%3A${itemId}`
+    : finalUrl;
+  if (!title) return null;
+  return withMissing({
+    platform: "mercado_livre",
+    platformLabel: "Mercado Livre",
+    externalId: itemId,
+    sourceUrl,
+    title,
+    price,
+    category: null,
+    shortDescription: title,
+    longDescription: null,
+    coverImage: pics[0] ?? null,
+    galleryImages: pics.slice(1, 6),
+    missingFields: [],
+    reviews: [],
+  });
+}
+
 function titleTag(html: string): string | null {
   const m = html.match(/<title[^>]*>([\s\S]{1,300}?)<\/title>/i);
   return m ? decodeEntities(m[1]) : null;
@@ -440,7 +519,9 @@ const mercadoLivre: Connector = {
      * vários produtos faça o sistema importar um produto diferente
      * daquele enviado pelo usuário.
      */
-    const itemId = extractMercadoLivreProductId(finalUrl, html);
+    const isSocial = isMercadoLivreSocialPage(finalUrl);
+    const sharedId = isSocial && html ? extractSharedItemId(html) : null;
+    const itemId = isSocial ? sharedId : extractMercadoLivreProductId(finalUrl, html);
 
     if (itemId) {
       try {
@@ -554,6 +635,18 @@ const mercadoLivre: Connector = {
      * a página realmente representa um produto, mas nunca mais
      * usamos o primeiro MLB encontrado na página.
      */
+    if (isSocial) {
+      // Página de afiliado: só aceitamos o card do item compartilhado.
+      // Sem ele, não importamos nada (evita pegar produto recomendado).
+      const social = html ? productFromSocialPage(finalUrl, html) : null;
+      if (social) return social;
+      return withMissing({
+        platform: "mercado_livre", platformLabel: "Mercado Livre", externalId: null,
+        sourceUrl: finalUrl, title: null, price: null, category: null, shortDescription: null,
+        longDescription: null, coverImage: null, galleryImages: [], missingFields: [], reviews: [],
+      });
+    }
+
     return fromPublicMetadata(
       "mercado_livre",
       "Mercado Livre",
