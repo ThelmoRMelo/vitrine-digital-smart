@@ -93,7 +93,28 @@ Deno.serve(async (req) => {
     if (!product.title && !product.coverImage && !product.price) {
       return json({ error: friendly("not_found"), code: "not_found" }, 200);
     }
+/**
+ * Segurança para importações do Mercado Livre:
+ *
+ * Se não conseguimos identificar um ID real de produto,
+ * não permitimos que uma página intermediária seja tratada
+ * como se fosse um produto válido.
+ *
+ * Isso evita importar acidentalmente um produto recomendado
+ * ou relacionado encontrado no HTML de um link meli.la.
+ */
+if (product.platform === "mercado_livre" && !product.externalId) {
+  return json(
+    {
+      error:
+        "Não foi possível identificar com segurança o produto do Mercado Livre através deste link. Cole novamente o link de afiliado ou o link direto da página específica do produto.",
+      code: "mercado_livre_product_id_not_found",
+    },
+    200,
+  );
+}
 
+    
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
     // Duplicidade:
