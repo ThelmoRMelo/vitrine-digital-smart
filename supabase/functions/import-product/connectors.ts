@@ -422,7 +422,6 @@ async function fetchMercadoLivreReviews(itemId: string, sourceUrl: string): Prom
 }
 
 const mercadoLivre: Connector = {
-const mercadoLivre: Connector = {
   id: "mercado_livre",
   label: "Mercado Livre",
 
