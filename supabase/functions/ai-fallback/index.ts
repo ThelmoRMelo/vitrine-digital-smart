@@ -705,7 +705,7 @@ REGRAS ABSOLUTAS:
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: aiMessages,
-        max_tokens: 300, // Aumentado para permitir formatação Markdown
+        max_tokens: 900, // Aumentado para permitir formatação Markdown
       }),
     });
 
