@@ -8,6 +8,13 @@
       "when": 1790969500649,
       "tag": "0000_niches_show_on_landing_pet_shop",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791456364041,
+      "tag": "0001_products_last_synced_at",
+      "breakpoints": true
     }
   ]
 }

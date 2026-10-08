@@ -522,6 +522,7 @@ export type Database = {
           imported_at: string | null
           is_featured: boolean
           is_hero: boolean
+          last_synced_at: string | null
           long_description: string | null
           min_price_allowed: number | null
           name: string
@@ -549,6 +550,7 @@ export type Database = {
           imported_at?: string | null
           is_featured?: boolean
           is_hero?: boolean
+          last_synced_at?: string | null
           long_description?: string | null
           min_price_allowed?: number | null
           name: string
@@ -576,6 +578,7 @@ export type Database = {
           imported_at?: string | null
           is_featured?: boolean
           is_hero?: boolean
+          last_synced_at?: string | null
           long_description?: string | null
           min_price_allowed?: number | null
           name?: string
