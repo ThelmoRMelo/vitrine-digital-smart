@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Trash2, Download, Package, Edit2, X, Image, Eye, EyeOff, Upload, Loader2, Share2, Images, Star, Crown } from 'lucide-react';
+import { Plus, Trash2, Download, Package, Edit2, X, Image, Eye, EyeOff, Upload, Loader2, Share2, Images, Star, Crown, RefreshCw } from 'lucide-react';
 import { ProductReviewsDialog } from '@/components/reviews/ProductReviewsDialog';
 import { PageHeader } from '@/components/PageHeader';
 import { BottomNav } from '@/components/BottomNav';
@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { useProducts, Product } from '@/hooks/useProducts';
+import { useProducts, Product, type SyncSummary } from '@/hooks/useProducts';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useNiches } from '@/hooks/useNiches';
 import { useProductImageUpload } from '@/hooks/useProductImageUpload';
 import { useProductGallery } from '@/hooks/useProductGallery';
@@ -82,8 +83,21 @@ export default function Products() {
     setHeroProduct,
     unsetHeroProduct,
     toggleProductFlags,
-
+    syncProducts,
+    syncing,
+    syncProgress,
   } = useProducts();
+  const [syncResult, setSyncResult] = useState<SyncSummary | null>(null);
+
+  const handleSync = async () => {
+    try {
+      const result = await syncProducts();
+      if (result) setSyncResult(result);
+    } catch (err) {
+      console.error('[Products] Erro na sincronização:', err);
+      toast.error('Não foi possível concluir a sincronização');
+    }
+  };
   
   const { niches } = useNiches();
   const { uploadImage, uploading } = useProductImageUpload();
@@ -373,6 +387,23 @@ export default function Products() {
           >
             <Plus className="w-5 h-5" />
             Adicionar novo produto
+          </Button>
+        )}
+
+        {/* Sincronizar preços dos produtos importados */}
+        {formMode === 'closed' && (
+          <Button onClick={handleSync} variant="outline" className="w-full" disabled={syncing}>
+            {syncing ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Sincronizando...{syncProgress ? ` Produto ${syncProgress.current} de ${syncProgress.total}` : ''}
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-5 h-5" />
+                Sincronizar produtos
+              </>
+            )}
           </Button>
         )}
 
@@ -783,6 +814,48 @@ export default function Products() {
         open={!!reviewsProduct}
         onOpenChange={(o) => !o && setReviewsProduct(null)}
       />
+
+      <Dialog open={!!syncResult} onOpenChange={(o) => !o && setSyncResult(null)}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>✅ Sincronização concluída!</DialogTitle>
+          </DialogHeader>
+          {syncResult && (
+            <div className="space-y-4 text-sm">
+              <div className="space-y-1">
+                <p className="font-medium">{syncResult.analyzed} produtos analisados</p>
+                <p>🟢 {syncResult.updated.length} preços atualizados</p>
+                <p>⚪ {syncResult.unchanged} produtos já estavam atualizados</p>
+                <p>⚠️ {syncResult.failed.length} produtos não puderam ser sincronizados</p>
+                <p className="text-muted-foreground">➖ {syncResult.notSyncable} não sincronizáveis (manuais ou sem integração)</p>
+              </div>
+              {syncResult.updated.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-semibold">Preço atualizado:</p>
+                  {syncResult.updated.map((u, i) => (
+                    <div key={i} className="rounded-lg bg-muted/40 p-2">
+                      <p className="font-medium line-clamp-2">{u.name}</p>
+                      <p className="text-muted-foreground">{formatPrice(u.oldPrice)} → <span className="text-primary font-semibold">{formatPrice(u.newPrice)}</span></p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {syncResult.failed.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-semibold">⚠️ Não foi possível sincronizar:</p>
+                  {syncResult.failed.map((f, i) => (
+                    <div key={i} className="rounded-lg bg-muted/40 p-2">
+                      <p className="font-medium line-clamp-2">{f.name}</p>
+                      <p className="text-xs text-muted-foreground">Motivo: {f.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Button className="w-full" onClick={() => setSyncResult(null)}>Fechar</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -860,6 +933,11 @@ function ProductCard({ product, onEdit, onDelete, onReviews, onToggleFeatured, o
           <p className="text-lg font-bold text-primary mt-0.5">
             {formatPrice(product.preco)}
           </p>
+          {product.lastSyncedAt && (
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Última sincronização: {new Date(product.lastSyncedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
           {product.descricaoCurta && (
             <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
               {product.descricaoCurta}

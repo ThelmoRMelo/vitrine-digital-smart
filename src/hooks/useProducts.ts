@@ -27,6 +27,7 @@ export interface SupabaseProduct {
   source_url: string | null;
   affiliate_url: string | null;
   imported_at: string | null;
+  last_synced_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -55,6 +56,7 @@ export interface Product {
   sourceUrl?: string | null;
   affiliateUrl?: string | null;
   importedAt?: string | null;
+  lastSyncedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   // Legado (compatibilidade)
@@ -87,6 +89,7 @@ function toUIProduct(p: SupabaseProduct): Product {
     sourceUrl: p.source_url ?? null,
     affiliateUrl: p.affiliate_url ?? null,
     importedAt: p.imported_at ?? null,
+    lastSyncedAt: p.last_synced_at ?? null,
     createdAt: p.created_at,
     updatedAt: p.updated_at,
     // Legado
@@ -122,6 +125,17 @@ function toSupabaseProduct(p: Partial<Product>): Partial<SupabaseProduct> {
   if (p.importedAt !== undefined) result.imported_at = p.importedAt;
 
   return result;
+}
+
+// Plataformas com sincronização de preço implementada no backend
+export const SYNCABLE_PLATFORMS = ['mercado_livre'];
+
+export interface SyncSummary {
+  analyzed: number;
+  updated: { name: string; oldPrice: number; newPrice: number }[];
+  unchanged: number;
+  failed: { name: string; reason: string }[];
+  notSyncable: number;
 }
 
 export const MAX_HERO_PRODUCTS = 105;
@@ -349,6 +363,44 @@ export function useProducts() {
   };
 
 
+  // Sincronização de preços em lote (somente products.price no backend)
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null);
+  const syncLockRef = useRef(false);
+
+  const syncProducts = useCallback(async (): Promise<SyncSummary | null> => {
+    if (syncLockRef.current) return null;
+    syncLockRef.current = true;
+    setSyncing(true);
+    const summary: SyncSummary = { analyzed: products.length, updated: [], unchanged: 0, failed: [], notSyncable: 0 };
+    try {
+      const syncable = products.filter(p => p.sourcePlatform && SYNCABLE_PLATFORMS.includes(p.sourcePlatform) && p.externalProductId);
+      summary.notSyncable = products.length - syncable.length;
+      // Processamento sequencial controlado (evita dezenas de requisições simultâneas)
+      for (let i = 0; i < syncable.length; i++) {
+        setSyncProgress({ current: i + 1, total: syncable.length });
+        const product = syncable[i];
+        try {
+          const { data, error } = await supabase.functions.invoke('sync-products', { body: { productId: product.id } });
+          if (error) throw error;
+          if (data?.status === 'updated') summary.updated.push({ name: product.nome, oldPrice: Number(data.oldPrice), newPrice: Number(data.newPrice) });
+          else if (data?.status === 'unchanged') summary.unchanged++;
+          else if (data?.status === 'skipped') summary.notSyncable++;
+          else summary.failed.push({ name: product.nome, reason: data?.reason || 'Erro de consulta' });
+        } catch (err) {
+          console.error('[useProducts] Erro ao sincronizar', product.id, err);
+          summary.failed.push({ name: product.nome, reason: 'Erro de consulta' });
+        }
+      }
+      await fetchProducts();
+      return summary;
+    } finally {
+      syncLockRef.current = false;
+      setSyncing(false);
+      setSyncProgress(null);
+    }
+  }, [products, fetchProducts]);
+
   // Apenas produtos ativos
   const activeProducts = products.filter(p => p.ativo);
   const inactiveProducts = products.filter(p => !p.ativo);
@@ -367,5 +419,8 @@ export function useProducts() {
     unsetHeroProduct,
     heroCount: products.filter((p) => p.isHero).length,
     toggleProductFlags,
+    syncProducts,
+    syncing,
+    syncProgress,
   };
 }
