@@ -15,7 +15,7 @@ interface ProductGalleryUploadProps {
 export function ProductGalleryUpload({ 
   images, 
   onImagesChange, 
-  maxImages = 5 
+  maxImages = 30
 }: ProductGalleryUploadProps) {
   const { uploadImage, uploading } = useProductImageUpload();
   const [urlInput, setUrlInput] = useState('');

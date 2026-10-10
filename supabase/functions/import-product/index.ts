@@ -4,6 +4,7 @@ import { connectors, detectConnector, resolveUrl, type NormalizedProduct } from 
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const BUCKET = "product-images";
 
 function json(body: unknown, status = 200) {
@@ -31,7 +32,18 @@ async function mirrorImage(
   index: number,
 ): Promise<string | null> {
   try {
-    const res = await fetch(imageUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+    let currentUrl = imageUrl;
+    let res: Response | null = null;
+    for (let hop = 0; hop <= 3; hop++) {
+      const url = new URL(currentUrl);
+      if (url.protocol !== "https:" || url.username || url.password || await isPrivateHost(url.hostname)) return null;
+      res = await fetch(url, { redirect: "manual", headers: { "User-Agent": "Mozilla/5.0" } });
+      if (![301, 302, 303, 307, 308].includes(res.status)) break;
+      const location = res.headers.get("location");
+      if (!location || hop === 3) return null;
+      currentUrl = new URL(location, url).toString();
+    }
+    if (!res) return null;
     if (!res.ok) return null;
     const type = res.headers.get("content-type") || "image/jpeg";
     if (!type.startsWith("image/")) return null;
@@ -48,6 +60,23 @@ async function mirrorImage(
   } catch (_e) {
     return null;
   }
+}
+
+async function isPrivateHost(hostname: string) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const privateAddress = (value: string) => {
+    const address = value.toLowerCase().replace(/^\[|\]$/g, "");
+    return /^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(address) ||
+      address === "::" || address === "::1" || address.startsWith("fc") || address.startsWith("fd") || address.startsWith("fe80:") || address.startsWith("ff") ||
+      address.startsWith("::ffff:127.") || address.startsWith("::ffff:10.") || address.startsWith("::ffff:192.168.") || address.startsWith("::ffff:169.254.");
+  };
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host === "metadata.google.internal" || privateAddress(host)) return true;
+  if (/^\d+(?:\.\d+){3}$/.test(host) || host.includes(":")) return false;
+  try {
+    const lookups = await Promise.allSettled([Deno.resolveDns(host, "A"), Deno.resolveDns(host, "AAAA")]);
+    const addresses = lookups.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+    return addresses.length === 0 || addresses.some(privateAddress);
+  } catch (_e) { return true; }
 }
 
 Deno.serve(async (req) => {
@@ -67,6 +96,13 @@ Deno.serve(async (req) => {
   if (!rawUrl || rawUrl.length > 2000 || !/^https?:\/\/\S+\.\S+/i.test(rawUrl)) {
     return json({ error: friendly("invalid_link"), code: "invalid_link" }, 400);
   }
+
+  const authorization = req.headers.get("Authorization");
+  if (!authorization?.startsWith("Bearer ")) return json({ error: "Sua sessão expirou. Entre novamente para importar produtos.", code: "unauthorized" }, 401);
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
+  const { data: userData, error: userError } = await userClient.auth.getUser();
+  if (userError || !userData.user) return json({ error: "Sua sessão expirou. Entre novamente para importar produtos.", code: "unauthorized" }, 401);
+  const tenantId = userData.user.id;
 
   try {
     const { finalUrl, html } = await resolveUrl(rawUrl);
@@ -135,6 +171,7 @@ if (product.externalId) {
     .select("id, name")
     .eq("source_platform", product.platform)
     .eq("source_url", product.sourceUrl)
+    .eq("tenant_id", tenantId)
     .limit(1)
     .maybeSingle();
 
@@ -162,14 +199,31 @@ if (product.externalId) {
 
     const gallery: string[] = [];
     let failedGallery = 0;
-    for (let i = 0; i < product.galleryImages.slice(0, 5).length; i++) {
-      const mirrored = await mirrorImage(supabase, product.galleryImages[i], idPrefix, i + 1);
-      if (mirrored) gallery.push(mirrored);
-      else failedGallery++;
+    for (let offset = 0; offset < product.galleryImages.length; offset += 4) {
+      const batch = product.galleryImages.slice(offset, offset + 4);
+      const results = await Promise.all(batch.map((imageUrl, index) => mirrorImage(supabase, imageUrl, idPrefix, offset + index + 1)));
+      results.forEach((mirrored, index) => {
+        if (mirrored) gallery.push(mirrored);
+        else { gallery.push(batch[index]); failedGallery++; }
+      });
     }
     if (failedGallery > 0) {
-      warnings.push(`${failedGallery} imagem(ns) da galeria não pôde(ram) ser importada(s).`);
+      warnings.push(`${failedGallery} imagem(ns) da galeria não pôde(ram) ser armazenada(s); as URLs de origem foram mantidas.`);
     }
+
+    const populatedFields = [product.title && "nome", product.price != null && "preço", product.shortDescription && "descrição curta", product.longDescription && "descrição comercial", product.technicalDetails && "ficha técnica", product.brand && "marca", product.model && "modelo", cover && "imagem principal", gallery.length > 0 && "galeria"].filter(Boolean) as string[];
+    const errors = [...warnings];
+    const report = {
+      generatedAt: new Date().toISOString(),
+      result: warnings.length || product.missingFields.length ? "partial" : "success",
+      identity: { externalId: product.externalId, title: product.title, sourceUrl: product.sourceUrl },
+      populatedFields,
+      missingFields: product.missingFields,
+      imageCounts: { found: product.galleryImages.length + (product.coverImage ? 1 : 0), imported: Math.max(0, (product.coverImage && cover !== product.coverImage ? 1 : 0) + gallery.filter((url, i) => url !== product.galleryImages[i]).length), failed: failedGallery + (product.coverImage && cover === product.coverImage ? 1 : 0) },
+      dataSources: product.dataSources,
+      errors,
+      pendingReviewFields: product.missingFields,
+    };
 
     return json({
       ok: true,
@@ -185,9 +239,13 @@ if (product.externalId) {
         category: product.category,
         shortDescription: product.shortDescription,
         longDescription: product.longDescription,
+        technicalDetails: product.technicalDetails,
+        brand: product.brand,
+        model: product.model,
         coverImage: cover,
         galleryImages: gallery,
         missingFields: product.missingFields,
+        report,
         reviews: Array.isArray(product.reviews) ? product.reviews.slice(0, 5) : [],
       },
     });
