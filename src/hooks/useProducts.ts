@@ -1,7 +1,6 @@
 // useProducts.ts - Hook para CRUD de produtos no Supabase
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import type { Json } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 
 // Tipo do produto no Supabase (snake_case)
@@ -13,7 +12,6 @@ export interface SupabaseProduct {
   niche_id: string | null;
   short_description: string | null;
   long_description: string | null;
-  technical_details: string | null;
   min_price_allowed: number | null;
   payment_methods: string[] | null;
   delivery_info: string | null;
@@ -29,7 +27,6 @@ export interface SupabaseProduct {
   source_url: string | null;
   affiliate_url: string | null;
   imported_at: string | null;
-  tenant_id: string | null;
   last_synced_at?: string | null;
   created_at: string;
   updated_at: string;
@@ -44,8 +41,6 @@ export interface Product {
   nicheId: string | null;
   descricaoCurta: string;
   descricaoDetalhada: string;
-  informacoesTecnicas: string;
-  importReport: import('./useProductImport').ImportReport | null;
   precoMinimoPermitido: number | null;
   formasPagamento: string[];
   infoEntrega: string;
@@ -79,8 +74,6 @@ function toUIProduct(p: SupabaseProduct): Product {
     nicheId: p.niche_id ?? null,
     descricaoCurta: p.short_description || '',
     descricaoDetalhada: p.long_description || '',
-    informacoesTecnicas: p.technical_details || '',
-    importReport: null,
     precoMinimoPermitido: p.min_price_allowed,
     formasPagamento: p.payment_methods || [],
     infoEntrega: p.delivery_info || '',
@@ -115,7 +108,6 @@ function toSupabaseProduct(p: Partial<Product>): Partial<SupabaseProduct> {
   if (p.nicheId !== undefined) result.niche_id = p.nicheId || null;
   if (p.descricaoCurta !== undefined) result.short_description = p.descricaoCurta;
   if (p.descricaoDetalhada !== undefined) result.long_description = p.descricaoDetalhada;
-  if (p.informacoesTecnicas !== undefined) result.technical_details = p.informacoesTecnicas;
   if (p.precoMinimoPermitido !== undefined) result.min_price_allowed = p.precoMinimoPermitido;
   if (p.formasPagamento !== undefined) result.payment_methods = p.formasPagamento;
   if (p.infoEntrega !== undefined) result.delivery_info = p.infoEntrega;
@@ -152,31 +144,16 @@ export function useProducts() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [authRequired, setAuthRequired] = useState(false);
 
   // Buscar todos os produtos
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      setAuthRequired(false);
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError) {
-        setError(`Não foi possível validar sua sessão: ${authError.message}`);
-        return;
-      }
-      if (!user) {
-        setProducts([]);
-        setAuthRequired(true);
-        return;
-      }
       
       const { data, error: fetchError } = await supabase
         .from('products')
         .select('*')
-        // O schema/RLS legado permite produtos compartilhados sem tenant_id.
-        // Incluí-los aqui mantém o painel alinhado à regra já aplicada pelo banco.
-        .or(`tenant_id.eq.${user.id},tenant_id.is.null`)
         .order('created_at', { ascending: false });
 
       if (fetchError) {
@@ -185,12 +162,7 @@ export function useProducts() {
         return;
       }
 
-      const reportResult = data?.length
-        ? await supabase.from('product_import_reports').select('product_id, report').in('product_id', data.map((product) => product.id))
-        : { data: [], error: null };
-      if (reportResult.error) console.error('[useProducts] Erro ao buscar relatórios:', reportResult.error);
-      const reports = new Map((reportResult.data ?? []).map((row) => [row.product_id, row.report as unknown as import('./useProductImport').ImportReport]));
-      const uiProducts = (data || []).map((row) => ({ ...toUIProduct(row), importReport: reports.get(row.id) ?? null }));
+      const uiProducts = (data || []).map(toUIProduct);
       setProducts(uiProducts);
     } catch (err) {
       console.error('[useProducts] Erro inesperado:', err);
@@ -207,46 +179,40 @@ export function useProducts() {
 
   // Realtime subscription
   useEffect(() => {
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    let cancelled = false;
-    void supabase.auth.getUser().then(({ data: { user } }) => {
-      if (cancelled || !user) return;
-      channel = supabase
-        .channel(`products-realtime-${user.id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (payload) => {
+    const channel = supabase
+      .channel('products-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'products'
+        },
+        (payload) => {
           console.log('[useProducts] Realtime:', payload.eventType);
+          
           if (payload.eventType === 'INSERT') {
-            const row = payload.new as SupabaseProduct;
-            if (row.tenant_id === user.id || row.tenant_id === null) setProducts(prev => [toUIProduct(row), ...prev]);
+            const newProduct = toUIProduct(payload.new as SupabaseProduct);
+            setProducts(prev => [newProduct, ...prev]);
           } else if (payload.eventType === 'UPDATE') {
-            const row = payload.new as SupabaseProduct;
-            if (row.tenant_id !== user.id && row.tenant_id !== null) {
-              setProducts(prev => prev.filter(product => product.id !== row.id));
-              return;
-            }
-            const updated = toUIProduct(row);
-            setProducts(prev => prev.map(p => p.id === updated.id ? { ...updated, importReport: p.importReport } : p));
+            const updated = toUIProduct(payload.new as SupabaseProduct);
+            setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
           } else if (payload.eventType === 'DELETE') {
             const deletedId = (payload.old as { id: string }).id;
             setProducts(prev => prev.filter(p => p.id !== deletedId));
           }
-        })
-        .subscribe();
-    });
+        }
+      )
+      .subscribe();
+
     return () => {
-      cancelled = true;
-      if (channel) void supabase.removeChannel(channel);
+      supabase.removeChannel(channel);
     };
   }, []);
 
   // Adicionar produto
   const addProduct = async (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('Entre na sua conta para salvar o produto.');
-        return null;
-      }
       const insertData = {
         name: product.nome,
         price: Number(product.preco),
@@ -254,7 +220,6 @@ export function useProducts() {
         niche_id: product.nicheId || null,
         short_description: product.descricaoCurta || null,
         long_description: product.descricaoDetalhada || null,
-        technical_details: product.informacoesTecnicas || null,
         min_price_allowed: product.precoMinimoPermitido || null,
         payment_methods: product.formasPagamento || null,
         delivery_info: product.infoEntrega || null,
@@ -269,7 +234,6 @@ export function useProducts() {
         source_url: product.sourceUrl ?? null,
         affiliate_url: product.affiliateUrl ?? null,
         imported_at: product.importedAt ?? null,
-        tenant_id: user.id,
       };
       
       const { data, error: insertError } = await supabase
@@ -291,23 +255,6 @@ export function useProducts() {
       toast.error('Erro ao salvar produto');
       return null;
     }
-  };
-
-  const saveImportReport = async (productId: string, report: import('./useProductImport').ImportReport) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
-    const { error: saveError } = await supabase.from('product_import_reports').upsert({
-      product_id: productId,
-      tenant_id: user.id,
-      report: JSON.parse(JSON.stringify(report)) as Json,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'product_id' });
-    if (saveError) {
-      console.error('[useProducts] Erro ao salvar relatório:', saveError);
-      return false;
-    }
-    setProducts((prev) => prev.map((product) => product.id === productId ? { ...product, importReport: report } : product));
-    return true;
   };
 
   // Atualizar produto
@@ -464,10 +411,8 @@ export function useProducts() {
     inactiveProducts,
     loading,
     error,
-    authRequired,
     fetchProducts,
     addProduct,
-    saveImportReport,
     updateProduct,
     deleteProduct,
     setHeroProduct,

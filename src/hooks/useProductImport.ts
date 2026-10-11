@@ -20,26 +20,10 @@ export interface ImportedProductData {
   category: string | null;
   shortDescription: string | null;
   longDescription: string | null;
-  technicalDetails: string | null;
-  brand: string | null;
-  model: string | null;
   coverImage: string | null;
   galleryImages: string[];
   missingFields: string[];
-  report: ImportReport;
   reviews: ImportedReview[];
-}
-
-export interface ImportReport {
-  generatedAt: string;
-  result: 'success' | 'partial';
-  identity: { externalId: string | null; title: string | null; sourceUrl: string };
-  populatedFields: string[];
-  missingFields: string[];
-  imageCounts: { found: number; imported: number; failed: number };
-  dataSources: string[];
-  errors: string[];
-  pendingReviewFields: string[];
 }
 
 export interface ImportResult {
