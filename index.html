@@ -2,41 +2,98 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    
-    <title>Vitrine Digital Smart</title>
-    <meta name="description" content="Conheça a Vitrine Digital Smart e descubra novas possibilidades com a ANIA, sua assistente virtual!" />
-    <meta name="author" content="Assistente IA" />
-    
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+
+    <!-- SEO e título da página -->
+    <title>Vitrine Digital Smart | ANIA</title>
+    <meta
+      name="description"
+      content="Conheça a Vitrine Digital Smart e descubra novas possibilidades com a ANIA, sua assistente virtual. Produtos, ofertas e oportunidades a um clique!"
+    />
+    <meta name="author" content="Vitrine Digital Smart" />
+
+    <!-- URL oficial da página -->
+    <link
+      rel="canonical"
+      href="https://vitrine-digital-smart.lovable.app/"
+    />
+
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#0a0f1c" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="apple-mobile-web-app-title" content="Assistente IA" />
-    
+
     <!-- Apple Touch Icon -->
     <link rel="apple-touch-icon" href="/icon-512.png" />
-    
+
     <!-- Manifest -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    
-    <!-- Open Graph -->
-    <meta property="og:title" content="Vitrine Digital Smart" />
-    <meta property="og:description" content="Conheça a Vitrine Digital Smart e descubra novas possibilidades com a ANIA, sua assistente virtual!" />
+
+    <!-- Open Graph: WhatsApp, Facebook e outros aplicativos -->
+    <meta property="og:locale" content="pt_BR" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/ania-compartilhamento.jpg" />
-    
+    <meta property="og:site_name" content="Vitrine Digital Smart" />
+    <meta property="og:title" content="Vitrine Digital Smart | ANIA" />
+    <meta
+      property="og:description"
+      content="Conheça a Vitrine Digital Smart e descubra novas possibilidades com a ANIA, sua assistente virtual. Produtos, ofertas e oportunidades a um clique!"
+    />
+    <meta
+      property="og:url"
+      content="https://vitrine-digital-smart.lovable.app/"
+    />
+
+    <!-- Imagem absoluta para a prévia de compartilhamento -->
+    <meta
+      property="og:image"
+      content="https://vitrine-digital-smart.lovable.app/ania-compartilhamento.jpg"
+    />
+    <meta
+      property="og:image:secure_url"
+      content="https://vitrine-digital-smart.lovable.app/ania-compartilhamento.jpg"
+    />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:alt" content="ANIA, assistente virtual da Vitrine Digital Smart" />
+
+    <!-- Twitter/X: prévia com imagem grande -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content="/ania-compartilhamento.jpg" />
+    <meta name="twitter:title" content="Vitrine Digital Smart | ANIA" />
+    <meta
+      name="twitter:description"
+      content="Conheça a Vitrine Digital Smart com a ANIA. Produtos, ofertas e novas possibilidades a um clique!"
+    />
+    <meta
+      name="twitter:image"
+      content="https://vitrine-digital-smart.lovable.app/ania-compartilhamento.jpg"
+    />
+    <meta
+      name="twitter:image:alt"
+      content="ANIA, assistente virtual da Vitrine Digital Smart"
+    />
   </head>
 
   <body>
     <style>
-      #ania-boot-splash{position:fixed;inset:0;z-index:99999;background:#0F172A;transition:opacity .4s ease}
+      #ania-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        background: #0f172a;
+        transition: opacity 0.4s ease;
+      }
     </style>
+
     <div id="ania-boot-splash" aria-hidden="true"></div>
     <div id="root"></div>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
