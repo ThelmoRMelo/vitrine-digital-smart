@@ -19,10 +19,6 @@ export interface NormalizedProduct {
   category: string | null;
   shortDescription: string | null;
   longDescription: string | null;
-  technicalDetails: string | null;
-  brand: string | null;
-  model: string | null;
-  dataSources: string[];
   coverImage: string | null;
   galleryImages: string[];
   missingFields: string[];
@@ -122,42 +118,20 @@ const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
 export async function resolveUrl(rawUrl: string): Promise<{ finalUrl: string; html: string | null }> {
-  const isPrivateAddress = (value: string) => {
-    const address = value.toLowerCase().replace(/^\[|\]$/g, "");
-    return /^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(address) ||
-      address === "::" || address === "::1" || address.startsWith("fc") || address.startsWith("fd") || address.startsWith("fe80:") || address.startsWith("ff") ||
-      address.startsWith("::ffff:127.") || address.startsWith("::ffff:10.") || address.startsWith("::ffff:192.168.") || address.startsWith("::ffff:169.254.");
-  };
-  const assertPublicHttpUrl = async (value: string) => {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error("unsafe_url");
-    if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host === "metadata.google.internal") throw new Error("unsafe_url");
-    if (isPrivateAddress(host)) throw new Error("unsafe_url");
-    if (!/^\d+(?:\.\d+){3}$/.test(host) && !host.includes(":")) {
-      const lookups = await Promise.allSettled([Deno.resolveDns(host, "A"), Deno.resolveDns(host, "AAAA")]);
-      const addresses = lookups.flatMap((result) => result.status === "fulfilled" ? result.value : []);
-      if (!addresses.length || addresses.some(isPrivateAddress)) throw new Error("unsafe_url");
-    }
-    return url;
-  };
   try {
-    let current = rawUrl;
-    for (let hop = 0; hop <= 5; hop++) {
-      await assertPublicHttpUrl(current);
-      const res = await fetch(current, { redirect: "manual", headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml" } });
-      if ([301, 302, 303, 307, 308].includes(res.status)) {
-        const location = res.headers.get("location");
-        if (!location || hop === 5) throw new Error("redirect_limit");
-        current = new URL(location, current).toString();
-        continue;
-      }
-      if (!res.ok) return { finalUrl: current, html: null };
-      if (!(res.headers.get("content-type") || "").includes("html")) return { finalUrl: current, html: null };
-      return { finalUrl: current, html: (await res.text()).slice(0, 800_000) };
-    }
-  } catch (_e) { return { finalUrl: rawUrl, html: null }; }
-  return { finalUrl: rawUrl, html: null };
+    const res = await fetch(rawUrl, {
+      redirect: "follow",
+      headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml" },
+    });
+    const finalUrl = res.url || rawUrl;
+    if (!res.ok) return { finalUrl, html: null };
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("html")) return { finalUrl, html: null };
+    const html = await res.text();
+    return { finalUrl, html: html.slice(0, 800_000) };
+  } catch (_e) {
+    return { finalUrl: rawUrl, html: null };
+  }
 }
 
 // ---------- Extração de metadados públicos (OG tags / JSON-LD) ----------
@@ -264,10 +238,6 @@ export function fromPublicMetadata(
     category: null,
     shortDescription: null,
     longDescription: null,
-    technicalDetails: null,
-    brand: null,
-    model: null,
-    dataSources: html ? ["metadados públicos da página"] : [],
     coverImage: null,
     galleryImages: [],
     missingFields: [],
@@ -484,12 +454,8 @@ function productFromSocialPage(finalUrl: string, html: string): NormalizedProduc
     category: null,
     shortDescription: title,
     longDescription: null,
-    technicalDetails: null,
-    brand: null,
-    model: null,
-    dataSources: ["página pública do Mercado Livre"],
     coverImage: pics[0] ?? null,
-    galleryImages: pics.slice(1),
+    galleryImages: pics.slice(1, 6),
     missingFields: [],
     reviews: [],
   });
@@ -506,9 +472,6 @@ export function withMissing(p: NormalizedProduct): NormalizedProduct {
   if (!p.price) missing.push("preço");
   if (!p.category) missing.push("categoria");
   if (!p.shortDescription) missing.push("descrição");
-  if (!p.technicalDetails) missing.push("ficha técnica");
-  if (!p.brand) missing.push("marca");
-  if (!p.model) missing.push("modelo");
   if (!p.coverImage) missing.push("imagem principal");
   p.missingFields = missing;
   return p;
@@ -604,28 +567,24 @@ const mercadoLivre: Connector = {
             // Descrição é opcional.
           }
 
-          let catalog: Record<string, unknown> | null = null;
-          if (typeof item.catalog_product_id === "string" && item.catalog_product_id) {
-            try {
-              const catalogRes = await fetch(`https://api.mercadolibre.com/products/${encodeURIComponent(item.catalog_product_id)}`, { headers: { Accept: "application/json" } });
-              if (catalogRes.ok) catalog = await catalogRes.json();
-            } catch (_e) { /* catálogo complementa os dados do item */ }
-          }
+          const pics: string[] = uniq(
+            (item.pictures ?? []).map(
+              (p: { secure_url?: string; url?: string }) =>
+                p.secure_url || p.url || "",
+            ),
+          );
 
-          const pics: string[] = uniq([
-            ...(item.pictures ?? []).map((p: { secure_url?: string; url?: string }) => p.secure_url || p.url || ""),
-            ...((catalog?.pictures as { secure_url?: string; url?: string }[] | undefined) ?? []).map((p) => p.secure_url || p.url || ""),
-          ]);
-
-          const attributeMap = new Map<string, string>();
-          for (const raw of [...(Array.isArray(item.attributes) ? item.attributes : []), ...(Array.isArray(catalog?.attributes) ? catalog.attributes as unknown[] : [])]) {
-            const a = raw as { id?: string; name?: string; value_name?: string; values?: { name?: string }[] };
-            const name = a?.name?.trim();
-            const value = a?.value_name?.trim() || a?.values?.map((v) => v.name).filter(Boolean).join(", ");
-            if (name && value) attributeMap.set((a.id || name).toLowerCase(), `${name}: ${value}`);
-          }
-          const attrs = [...attributeMap.values()].join("\n");
-          const itemAttributes = Array.isArray(item.attributes) ? item.attributes : [];
+          const attrs = (item.attributes ?? [])
+            .filter(
+              (a: { name?: string; value_name?: string }) =>
+                a?.name && a?.value_name,
+            )
+            .slice(0, 12)
+            .map(
+              (a: { name: string; value_name: string }) =>
+                `${a.name}: ${a.value_name}`,
+            )
+            .join("\n");
 
           const productUrl = item.permalink || finalUrl;
 
@@ -647,15 +606,12 @@ const mercadoLivre: Connector = {
 
             shortDescription: item.title ?? null,
 
-            longDescription: description,
-            technicalDetails: attrs || null,
-            brand: itemAttributes.find((a: { id?: string }) => a.id === "BRAND")?.value_name ?? null,
-            model: itemAttributes.find((a: { id?: string }) => a.id === "MODEL")?.value_name ?? null,
-            dataSources: ["API oficial de itens do Mercado Livre", ...(description ? ["API oficial de descrição do Mercado Livre"] : []), ...(category ? ["API oficial de categorias do Mercado Livre"] : []), ...(catalog ? ["API oficial do catálogo do Mercado Livre"] : [])],
+            longDescription:
+              [description, attrs].filter(Boolean).join("\n\n") || null,
 
             coverImage: pics[0] ?? item.thumbnail ?? null,
 
-            galleryImages: pics.slice(1),
+            galleryImages: pics.slice(1, 6),
 
             missingFields: [],
 
@@ -687,7 +643,7 @@ const mercadoLivre: Connector = {
       return withMissing({
         platform: "mercado_livre", platformLabel: "Mercado Livre", externalId: null,
         sourceUrl: finalUrl, title: null, price: null, category: null, shortDescription: null,
-        longDescription: null, technicalDetails: null, brand: null, model: null, dataSources: [], coverImage: null, galleryImages: [], missingFields: [], reviews: [],
+        longDescription: null, coverImage: null, galleryImages: [], missingFields: [], reviews: [],
       });
     }
 
