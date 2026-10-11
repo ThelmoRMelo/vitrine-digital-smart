@@ -45,7 +45,6 @@ interface SupabaseProduct {
   category: string | null;
   short_description: string | null;
   long_description: string | null;
-  technical_details: string | null;
   min_price_allowed: number | null;
   payment_methods: string[] | null;
   delivery_info: string | null;
@@ -369,7 +368,7 @@ if (!contextProduct && FULL_CATALOG_REGEX.test(trimmedInput)) {
 
   // Conhecimento interno da ANIA para entender
   // quando este produto é relevante para o cliente.
-  conhecimentoIA: [p.long_description, p.technical_details ? `Ficha técnica:\n${p.technical_details}` : ''].filter(Boolean).join('\n\n'),
+  conhecimentoIA: p.long_description || '',
 
   categoria: p.category || '',
 
@@ -388,7 +387,7 @@ if (!contextProduct && FULL_CATALOG_REGEX.test(trimmedInput)) {
   descricao: contextProduct.short_description || '',
 
   // Conhecimento completo da ANIA sobre este produto
-  conhecimentoIA: [contextProduct.long_description, contextProduct.technical_details ? `Ficha técnica:\n${contextProduct.technical_details}` : ''].filter(Boolean).join('\n\n'),
+  conhecimentoIA: contextProduct.long_description || '',
 
   categoria: contextProduct.category || '',
   precoMinimo: contextProduct.min_price_allowed,

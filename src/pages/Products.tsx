@@ -14,7 +14,7 @@ import { useProductImageUpload } from '@/hooks/useProductImageUpload';
 import { useProductGallery } from '@/hooks/useProductGallery';
 import { ProductGalleryUpload } from '@/components/ProductGalleryUpload';
 import { ProductImportPanel } from '@/components/products/ProductImportPanel';
-import type { ImportedProductData, ImportedReview, ImportReport } from '@/hooks/useProductImport';
+import type { ImportedProductData, ImportedReview } from '@/hooks/useProductImport';
 import { toast } from 'sonner';
 
 const categories = [
@@ -34,8 +34,6 @@ interface ProductForm {
   nicheId: string | null;
   descricaoCurta: string;
   descricaoDetalhada: string;
-  informacoesTecnicas: string;
-  importReport: ImportReport | null;
   precoMinimoPermitido: string;
   formasPagamento: string;
   infoEntrega: string;
@@ -57,8 +55,6 @@ const emptyForm: ProductForm = {
   nicheId: null,
   descricaoCurta: '',
   descricaoDetalhada: '',
-  informacoesTecnicas: '',
-  importReport: null,
   precoMinimoPermitido: '',
   formasPagamento: '',
   infoEntrega: '',
@@ -81,11 +77,7 @@ export default function Products() {
     activeProducts, 
     inactiveProducts, 
     loading,
-    error,
-    authRequired,
-    fetchProducts,
     addProduct, 
-    saveImportReport,
     updateProduct, 
     deleteProduct,
     setHeroProduct,
@@ -192,8 +184,6 @@ export default function Products() {
       nicheId: product.nicheId ?? null,
       descricaoCurta: product.descricaoCurta || '',
       descricaoDetalhada: product.descricaoDetalhada || '',
-      informacoesTecnicas: product.informacoesTecnicas || '',
-      importReport: product.importReport ?? null,
       precoMinimoPermitido: product.precoMinimoPermitido?.toString().replace('.', ',') || '',
       formasPagamento: product.formasPagamento?.join(', ') || '',
       infoEntrega: product.infoEntrega || '',
@@ -224,14 +214,13 @@ export default function Products() {
       categoria: matchedCategory ?? prev.categoria,
       descricaoCurta: data.shortDescription ?? prev.descricaoCurta,
       descricaoDetalhada: data.longDescription ?? prev.descricaoDetalhada,
-      informacoesTecnicas: data.technicalDetails ?? prev.informacoesTecnicas,
-      importReport: data.report,
       imagemUrl: data.coverImage ?? prev.imagemUrl,
-      galleryImages: data.galleryImages.length > 0 ? [...new Set([...prev.galleryImages, ...data.galleryImages])] : prev.galleryImages,
+      linkPagamento: affiliateUrl || prev.linkPagamento,
+      galleryImages: data.galleryImages.length > 0 ? data.galleryImages.slice(0, 5) : prev.galleryImages,
       sourcePlatform: data.platform,
       externalProductId: data.externalId,
       sourceUrl: data.sourceUrl,
-      affiliateUrl: affiliateUrl || prev.affiliateUrl,
+      affiliateUrl: affiliateUrl,
       importedAt: new Date().toISOString(),
     }));
     if (data.coverImage) setImagePreview(data.coverImage);
@@ -292,8 +281,6 @@ export default function Products() {
       nicheId: form.nicheId,
       descricaoCurta: form.descricaoCurta.trim(),
       descricaoDetalhada: form.descricaoDetalhada.trim(),
-      informacoesTecnicas: form.informacoesTecnicas.trim(),
-      importReport: form.importReport,
       precoMinimoPermitido: precoMinimoValue,
       formasPagamento: formasArray,
       infoEntrega: form.infoEntrega.trim(),
@@ -355,16 +342,6 @@ export default function Products() {
         }
       }
 
-      if (savedProductId && form.importReport) {
-        const reportSaved = await saveImportReport(savedProductId, form.importReport);
-        if (!reportSaved) {
-          toast.error('O produto foi salvo, mas o relatório não pôde ser registrado. Verifique se a migration de importação foi aplicada e tente novamente.');
-          setEditingId(savedProductId);
-          setFormMode('edit');
-          return;
-        }
-      }
-
       closeForm();
     } catch (err) {
       console.error('Erro ao salvar:', err);
@@ -401,23 +378,6 @@ export default function Products() {
       <PageHeader title="Meus Produtos" subtitle="Cadastre seus produtos à venda" />
 
       <main className="px-6 py-4 space-y-4 max-w-lg mx-auto">
-        {(error || authRequired) && (
-          <div role="alert" className="glass-card rounded-2xl p-5 space-y-3">
-            <p className="font-medium">
-              {authRequired ? 'Sua sessão não está ativa.' : 'Não foi possível carregar os produtos.'}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {authRequired
-                ? 'Entre na sua conta e tente novamente.'
-                : `A consulta falhou: ${error}. Seus produtos não foram alterados.`}
-            </p>
-            <Button variant="outline" onClick={() => void fetchProducts()}>
-              <RefreshCw className="w-4 h-4" />
-              Tentar novamente
-            </Button>
-          </div>
-        )}
-
         {/* Add new product button */}
         {formMode === 'closed' && (
           <Button
@@ -636,40 +596,6 @@ export default function Products() {
               </p>
             </div>
 
-            <div>
-              <label className="text-sm text-muted-foreground mb-2 block">Informações técnicas (para IA)</label>
-              <Textarea
-                value={form.informacoesTecnicas}
-                onChange={(e) => setForm(prev => ({ ...prev, informacoesTecnicas: e.target.value }))}
-                placeholder="Marca, modelo, ficha técnica, itens inclusos, compatibilidade..."
-                rows={5}
-              />
-              <p className="text-xs text-muted-foreground mt-1">Dados estruturados da ficha técnica; confirme medidas e características antes de salvar.</p>
-            </div>
-
-            {(form.sourceUrl || form.affiliateUrl || form.importReport) && (
-              <section className="rounded-lg border bg-muted/20 p-3 space-y-3" aria-label="Revisão da importação">
-                <h3 className="text-sm font-semibold">Revisão e relatório da importação</h3>
-                {form.sourceUrl && <div>
-                  <label className="text-xs text-muted-foreground">URL original do produto</label>
-                  <Input type="url" value={form.sourceUrl} onChange={(e) => setForm(prev => ({ ...prev, sourceUrl: e.target.value }))} />
-                </div>}
-                {form.affiliateUrl && <div>
-                  <label className="text-xs text-muted-foreground">Link de afiliado</label>
-                  <Input type="url" value={form.affiliateUrl} onChange={(e) => setForm(prev => ({ ...prev, affiliateUrl: e.target.value }))} />
-                </div>}
-                {form.importReport && <div className="space-y-2 text-xs">
-                  <p><strong>Produto:</strong> {form.importReport.identity.title || form.nome}{form.importReport.identity.externalId ? ` · ${form.importReport.identity.externalId}` : ''}</p>
-                  <p><strong>Resultado:</strong> {form.importReport.result === 'success' ? 'Importação concluída' : 'Importação parcial'} · {new Date(form.importReport.generatedAt).toLocaleString('pt-BR')}</p>
-                  <p><strong>Campos preenchidos:</strong> {form.importReport.populatedFields.join(', ') || 'nenhum'}</p>
-                  <p><strong>Pendências:</strong> {form.importReport.pendingReviewFields.join(', ') || 'nenhuma identificada'}</p>
-                  <p><strong>Imagens:</strong> {form.importReport.imageCounts.found} encontradas, {form.importReport.imageCounts.imported} armazenadas, {form.importReport.imageCounts.failed} com falha</p>
-                  <p><strong>Fontes:</strong> {form.importReport.dataSources.join(', ') || 'não identificada'}</p>
-                  {form.importReport.errors.length > 0 && <div role="alert"><strong>Avisos:</strong><ul className="list-disc pl-5">{form.importReport.errors.map((error, index) => <li key={`${index}-${error}`}>{error}</li>)}</ul></div>}
-                </div>}
-              </section>
-            )}
-
             {/* Formas de pagamento */}
             <div>
               <label className="text-sm text-muted-foreground mb-2 block">
@@ -779,7 +705,7 @@ export default function Products() {
             <ProductGalleryUpload
               images={form.galleryImages}
               onImagesChange={(images) => setForm(prev => ({ ...prev, galleryImages: images }))}
-              maxImages={30}
+              maxImages={5}
             />
 
             {/* Produto ativo */}
@@ -816,7 +742,7 @@ export default function Products() {
         )}
 
         {/* Empty state */}
-        {products.length === 0 && !error && !authRequired && formMode === 'closed' && (
+        {products.length === 0 && formMode === 'closed' && (
           <div className="glass-card rounded-2xl p-8 text-center">
             <Package className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
             <p className="text-muted-foreground">Nenhum produto cadastrado</p>
