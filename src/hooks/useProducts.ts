@@ -152,22 +152,31 @@ export function useProducts() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
 
   // Buscar todos os produtos
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const { data: { user } } = await supabase.auth.getUser();
+      setAuthRequired(false);
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) {
+        setError(`Não foi possível validar sua sessão: ${authError.message}`);
+        return;
+      }
       if (!user) {
         setProducts([]);
+        setAuthRequired(true);
         return;
       }
       
       const { data, error: fetchError } = await supabase
         .from('products')
         .select('*')
-        .eq('tenant_id', user.id)
+        // O schema/RLS legado permite produtos compartilhados sem tenant_id.
+        // Incluí-los aqui mantém o painel alinhado à regra já aplicada pelo banco.
+        .or(`tenant_id.eq.${user.id},tenant_id.is.null`)
         .order('created_at', { ascending: false });
 
       if (fetchError) {
@@ -208,10 +217,10 @@ export function useProducts() {
           console.log('[useProducts] Realtime:', payload.eventType);
           if (payload.eventType === 'INSERT') {
             const row = payload.new as SupabaseProduct;
-            if (row.tenant_id === user.id) setProducts(prev => [toUIProduct(row), ...prev]);
+            if (row.tenant_id === user.id || row.tenant_id === null) setProducts(prev => [toUIProduct(row), ...prev]);
           } else if (payload.eventType === 'UPDATE') {
             const row = payload.new as SupabaseProduct;
-            if (row.tenant_id !== user.id) {
+            if (row.tenant_id !== user.id && row.tenant_id !== null) {
               setProducts(prev => prev.filter(product => product.id !== row.id));
               return;
             }
@@ -455,6 +464,7 @@ export function useProducts() {
     inactiveProducts,
     loading,
     error,
+    authRequired,
     fetchProducts,
     addProduct,
     saveImportReport,

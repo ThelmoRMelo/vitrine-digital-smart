@@ -81,6 +81,9 @@ export default function Products() {
     activeProducts, 
     inactiveProducts, 
     loading,
+    error,
+    authRequired,
+    fetchProducts,
     addProduct, 
     saveImportReport,
     updateProduct, 
@@ -398,6 +401,23 @@ export default function Products() {
       <PageHeader title="Meus Produtos" subtitle="Cadastre seus produtos à venda" />
 
       <main className="px-6 py-4 space-y-4 max-w-lg mx-auto">
+        {(error || authRequired) && (
+          <div role="alert" className="glass-card rounded-2xl p-5 space-y-3">
+            <p className="font-medium">
+              {authRequired ? 'Sua sessão não está ativa.' : 'Não foi possível carregar os produtos.'}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {authRequired
+                ? 'Entre na sua conta e tente novamente.'
+                : `A consulta falhou: ${error}. Seus produtos não foram alterados.`}
+            </p>
+            <Button variant="outline" onClick={() => void fetchProducts()}>
+              <RefreshCw className="w-4 h-4" />
+              Tentar novamente
+            </Button>
+          </div>
+        )}
+
         {/* Add new product button */}
         {formMode === 'closed' && (
           <Button
@@ -796,7 +816,7 @@ export default function Products() {
         )}
 
         {/* Empty state */}
-        {products.length === 0 && formMode === 'closed' && (
+        {products.length === 0 && !error && !authRequired && formMode === 'closed' && (
           <div className="glass-card rounded-2xl p-8 text-center">
             <Package className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
             <p className="text-muted-foreground">Nenhum produto cadastrado</p>
