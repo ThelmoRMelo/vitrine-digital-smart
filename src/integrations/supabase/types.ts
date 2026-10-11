@@ -524,7 +524,6 @@ export type Database = {
           is_hero: boolean
           last_synced_at: string | null
           long_description: string | null
-          technical_details: string | null
           min_price_allowed: number | null
           name: string
           niche_id: string | null
@@ -553,7 +552,6 @@ export type Database = {
           is_hero?: boolean
           last_synced_at?: string | null
           long_description?: string | null
-          technical_details?: string | null
           min_price_allowed?: number | null
           name: string
           niche_id?: string | null
@@ -582,7 +580,6 @@ export type Database = {
           is_hero?: boolean
           last_synced_at?: string | null
           long_description?: string | null
-          technical_details?: string | null
           min_price_allowed?: number | null
           name?: string
           niche_id?: string | null
@@ -602,41 +599,6 @@ export type Database = {
             columns: ["niche_id"]
             isOneToOne: false
             referencedRelation: "niches"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      product_import_reports: {
-        Row: {
-          created_at: string
-          id: string
-          product_id: string
-          report: Json
-          tenant_id: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          product_id: string
-          report: Json
-          tenant_id?: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          product_id?: string
-          report?: Json
-          tenant_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "product_import_reports_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: true
-            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
