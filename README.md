@@ -1,153 +1,147 @@
-# ANIA-Assistente
+# 🤖 ANIA — Assistente Virtual Inteligente
 
-Você é um arquiteto de produto sênior especializado em SaaS, PWA e aplicações mobile-first.
+Sua parceira digital para atendimento, produtos e oportunidades de vendas.
 
-Crie DO ZERO uma aplicação chamada “Assistente Virtual Inteligente”, pensada para ser DISTRIBUÍDA A TERCEIROS (cada usuário representa um comércio diferente).
+A ANIA (Assistente Virtual Inteligente) é uma plataforma de atendimento digital desenvolvida para ajudar empreendedores e comerciantes a organizar seus produtos, apresentar suas ofertas e oferecer uma experiência de atendimento mais humana, prática e inteligente.
 
-OBJETIVO PRINCIPAL:
-Permitir que qualquer pessoa, mesmo sem conhecimento técnico, configure, treine e utilize uma IA de atendimento para WhatsApp, baseada em respostas humanas, produtos cadastrados e comportamento persuasivo.
+Integrada à Vitrine Digital, a ANIA busca aproximar negócios e clientes por meio de uma experiência moderna, acessível e adaptada a dispositivos móveis.
 
-REGRAS FUNDAMENTAIS:
-1. A aplicação deve ser MOBILE-FIRST (formato de aplicativo).
-2. Deve funcionar bem no celular, mas também se adaptar ao desktop.
-3. NÃO pode parecer um painel de computador tradicional.
-4. Deve parecer um APP PROFISSIONAL e GRANDE desde o primeiro acesso.
-5. Linguagem 100% humana (nada técnico visível para o usuário).
-6. Pensada para usuários leigos.
-7. Cada usuário possui:
-   - Seu próprio comércio
-   - Sua própria IA
-   - Seus próprios produtos
-   - Seus próprios treinamentos
+---
 
-ESTRUTURA GERAL DO APP (PWA):
+🎯 Objetivo do projeto
 
-TELA 1 — ONBOARDING GUIADO
-- Boas-vindas simples:
-  “Vamos configurar seu atendimento inteligente em poucos minutos.”
-- Coleta:
-  - Nome do comércio
-  - Categoria do comércio
-- Seleção de estilo da IA:
-  - Educada
-  - Amigável
-  - Vendedora
-  - Direta
-- Ao final, a IA JÁ DEVE FUNCIONAR com respostas padrão.
+Democratizar o acesso à tecnologia de atendimento inteligente, permitindo que empreendedores configurem sua própria experiência digital sem precisar dominar programação.
 
-MENU PRINCIPAL (EM FORMATO DE CARDS, ÍCONES GRANDES):
-Organizado como aplicativo de celular, NÃO como sidebar fixa.
+A proposta é reunir atendimento virtual, gerenciamento de produtos, apresentação de ofertas e ferramentas de apoio às vendas em um único ambiente.
 
-Cards:
-🤖 Minha IA
-🧠 Treinar Atendimento
-📦 Produtos
-💬 Simular Conversa
-📊 Meu Negócio
-⚙️ Ajustes
+✨ Principais funcionalidades
 
-Cada card abre uma TELA ÚNICA, organizada verticalmente.
+🤖 Atendimento inteligente
 
-TELA: “Minha IA”
-- Status da IA (ativa / pausada)
-- Descrição simples do que ela faz
-- Botão “Testar resposta agora”
-- Botão “Publicar atendimento”
+- Assistente virtual voltada ao atendimento de clientes.
+- Personalização das respostas e do comportamento do atendimento.
+- Treinamento com informações específicas do negócio.
+- Experiência de conversa pensada para ser natural e acessível.
 
-TELA: “Treinar Atendimento”
-- NÃO usar termos como “dataset” ou “intents”
-- Interface guiada:
-  Campo 1: “Quando o cliente perguntar…”
-  Campo 2: “A IA deve responder assim…”
-- Sugestões automáticas:
-  - Atendimento inicial
-  - Preço
-  - Promoções
-  - Suporte
-  - Reclamações
-  - Xingamentos e ofensas (a IA deve responder com educação)
-- Botão claro: “Salvar resposta”
-- Botão: “Atualizar IA”
+🛍️ Vitrine Digital
 
-TELA: “Produtos”
-- Cadastro simples:
-  - Nome do produto
-  - Categoria (dropdown)
-  - Preço (campo monetário, número, não string)
-  - Palavras que o cliente pode usar para perguntar sobre o produto
-- As palavras-chave DEVEM ser salvas corretamente em array.
-- Interface amigável, com exemplos nos placeholders.
-- Botão: “Salvar produto”
-- Botão: “Exportar produtos”
+- Apresentação de produtos e ofertas.
+- Cadastro e edição de produtos.
+- Organização por categorias.
+- Recursos de destaque para produtos selecionados.
+- Exibição adaptada a celulares, tablets e computadores.
 
-TELA: “Simular Conversa”
-- Campo de mensagem como WhatsApp
-- IA responde em tempo real simulando atendimento humano
+📦 Gerenciamento de produtos
 
-TELA: “Meu Negócio”
-- Dados do comércio
-- Categoria
-- Informações gerais
+- Cadastro e atualização de informações.
+- Organização de preços, descrições e imagens.
+- Recursos de importação e sincronização com o Mercado Livre, conforme as integrações habilitadas.
+- Possibilidade de ampliar os dados disponíveis para auxiliar o atendimento da IA.
 
-TELA: “Ajustes”
-- Tom da IA
-- Idioma
-- Backup
-- Modo avançado (opcional)
+🧠 Treinamento da ANIA
 
-EXPORTAÇÃO (IMPORTANTE):
-- A exportação NÃO deve ficar na tela inicial.
-- A exportação deve existir APENAS:
-  - Na tela de Produtos
-  - Na tela de Treinamento da IA
-- Exportar automaticamente para arquivos:
-  - brain.js
-  - products.js
-- Estrutura compatível com Node.js.
-- Conversão automática de tipos:
-  - Preço como number
-  - Palavras-chave como array
-- Usuário NÃO vê código, apenas clica em:
-  “Publicar atendimento”
+- Personalização das informações utilizadas nas respostas.
+- Organização do conhecimento relacionado ao negócio.
+- Preparação para responder às dúvidas mais comuns dos clientes.
 
-ARQUITETURA CONCEITUAL:
-- A IA não começa vazia.
-- Todo usuário recebe uma IA BASE pronta.
-- O usuário apenas PERSONALIZA.
-- O sistema deve parecer robusto, confiável e profissional.
+📱 Experiência mobile-first
 
-DESIGN:
-- Visual futurista, limpo, moderno.
-- Ícones grandes.
-- Tipografia clara.
-- Nada poluído.
-- Aparência de aplicativo nativo.
+- Interface inspirada em aplicativos modernos.
+- Navegação adaptável a diferentes tamanhos de tela.
+- Estrutura preparada para uma experiência de aplicação web progressiva (PWA).
 
-RESULTADO ESPERADO:
-Uma aplicação PWA, mobile-first, intuitiva, pronta para ser usada por QUALQUER pessoa, permitindo criar, treinar e gerenciar uma IA de atendimento realista, humana e persuasiva.
+---
 
-Implemente essa aplicação respeitando todos os pontos acima. 
-Utilize a imagem anexada como referência.
+🏗️ Tecnologias utilizadas
 
-This project was built with [Lovable](https://lovable.dev).
+O projeto utiliza tecnologias modernas para desenvolvimento de interfaces web e integração com serviços de backend.
 
-**Live app**: https://assistente-virtual-ai.lovable.app
+Tecnologia| Finalidade
+React| Construção da interface
+TypeScript| Tipagem e organização do código
+Vite| Desenvolvimento e compilação
+Tailwind CSS| Estilização da interface
+Supabase| Recursos de backend e banco de dados
+React Router| Navegação entre telas
+TanStack Query| Gerenciamento de consultas e dados
+Vite PWA| Recursos de aplicação web progressiva
 
-## Build with Lovable
+Outras bibliotecas são utilizadas conforme as necessidades específicas do projeto.
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/1500d32f-d3a9-47b0-9cca-2b7884fe4bea).
+---
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+🔐 Segurança e dados
 
-## Development
+A ANIA deve preservar a separação dos dados de cada loja, respeitar as permissões de acesso e proteger as credenciais utilizadas nas integrações externas.
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+As integrações com serviços de terceiros devem utilizar mecanismos de autorização apropriados, mantendo chaves privadas e tokens sensíveis no backend.
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+---
+
+🚀 Executar o projeto localmente
+
+Pré-requisitos
+
+- Node.js
+- npm
+- Acesso às variáveis de ambiente necessárias para os serviços utilizados pelo projeto.
+
+Instalação
+
+Clone o repositório:
+
+git clone https://github.com/ThelmoRMelo/vitrine-digital-smart.git
+
+Entre na pasta:
+
+cd vitrine-digital-smart
+
+Instale as dependências:
+
+npm install
+
+Inicie o ambiente de desenvolvimento:
+
 npm run dev
-```
+
+Para gerar a versão de produção:
+
+npm run build
+
+Para executar a verificação de lint:
+
+npm run lint
+
+Configure as variáveis de ambiente exigidas pelo projeto antes de conectar os serviços externos.
+
+---
+
+🧭 Visão de futuro
+
+A evolução da ANIA busca ampliar as possibilidades de atendimento e comércio digital, incluindo:
+
+- Pesquisa inteligente de produtos.
+- Ampliação dos recursos de importação de informações e imagens.
+- Integrações autorizadas com marketplaces.
+- Apoio à divulgação de produtos por meio de links de afiliados.
+- Aprimoramento contínuo do conhecimento utilizado pela IA.
+- Ferramentas de análise e acompanhamento das oportunidades comerciais.
+
+Esses recursos dependem de implementação, validação técnica e disponibilidade das integrações necessárias.
+
+---
+
+💡 Nossa missão
+
+Tornar a tecnologia mais acessível aos pequenos negócios, transformando o atendimento digital em uma experiência mais simples, próxima e útil.
+
+ANIA — inteligência para atender, tecnologia para conectar e oportunidades para crescer.
+
+---
+
+🔗 Projeto
+
+- Repositório: https://github.com/ThelmoRMelo/vitrine-digital-smart
+- Aplicação: https://assistente-virtual-ai.lovable.app
+
+«Projeto em evolução contínua. Funcionalidades e integrações podem variar conforme a versão publicada.»
