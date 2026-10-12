@@ -61,7 +61,9 @@ export function ProductCard({
 
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const shareUrl = `${window.location.origin}/preview/${product.id}`;
+    // Mesmo link de preview usado em "Meus Produtos" (Edge Function com Open Graph)
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const shareUrl = `${supabaseUrl}/functions/v1/preview/${product.id}`;
     try {
       if (navigator.share) {
         await navigator.share({
