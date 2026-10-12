@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
       return new Response("Product not found", { status: 404 });
     }
 
-    const siteUrl = Deno.env.get("SITE_URL") || "https://vitrine-digital-smart.lovable.app").replace(//+$/, "");  
+    const siteUrl = (Deno.env.get("SITE_URL") || "https://vitrine-digital-smart.lovable.app").replace(//+$/, "");  
     const chatUrl = `${siteUrl}/chat/${productId}`;
 
     // Detecção de crawlers sociais
