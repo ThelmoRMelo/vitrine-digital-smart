@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { BottomNav } from '@/components/BottomNav';
 import { Button } from '@/components/ui/button';
 import { InstallAppButton } from '@/components/InstallAppButton';
+import { ChangePasswordSection } from '@/components/ChangePasswordSection';
 
 import { Input } from '@/components/ui/input';
 import { useApp } from '@/contexts/AppContext';
@@ -182,6 +183,7 @@ export default function Settings() {
 
       <main className="px-6 py-4 space-y-4 max-w-lg mx-auto">
         <InstallAppButton />
+        <ChangePasswordSection />
 
 
         {/* Sale Mode */}

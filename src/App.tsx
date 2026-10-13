@@ -19,6 +19,7 @@ import Reviews from "./pages/Reviews";
 import NotFound from "./pages/NotFound";
 import { SplashScreen } from "./components/SplashScreen";
 import { useOfficialIcon } from "./hooks/useOfficialIcon";
+import { AdminGate } from "./components/AdminGate";
 
 const queryClient = new QueryClient();
 
@@ -37,17 +38,17 @@ const App = () => (
         <SplashScreen>
         <BrowserRouter>
           <Routes>
-            {/* Home principal do app (sem autenticação) */}
-            <Route path="/" element={<Index />} />
-            <Route path="/treinar" element={<Training />} />
-            <Route path="/produtos" element={<Products />} />
-            <Route path="/simular" element={<Simulate />} />
-            <Route path="/negocio" element={<Business />} />
-            <Route path="/ajustes" element={<Settings />} />
-            <Route path="/ania" element={<AniaSettingsPage />} />
-            <Route path="/conversas" element={<Conversations />} />
-            <Route path="/conversas/:id" element={<ConversationDetail />} />
-            <Route path="/avaliacoes" element={<Reviews />} />
+            {/* Painel administrativo (protegido pela senha do aplicativo) */}
+            <Route path="/" element={<AdminGate><Index /></AdminGate>} />
+            <Route path="/treinar" element={<AdminGate><Training /></AdminGate>} />
+            <Route path="/produtos" element={<AdminGate><Products /></AdminGate>} />
+            <Route path="/simular" element={<AdminGate><Simulate /></AdminGate>} />
+            <Route path="/negocio" element={<AdminGate><Business /></AdminGate>} />
+            <Route path="/ajustes" element={<AdminGate><Settings /></AdminGate>} />
+            <Route path="/ania" element={<AdminGate><AniaSettingsPage /></AdminGate>} />
+            <Route path="/conversas" element={<AdminGate><Conversations /></AdminGate>} />
+            <Route path="/conversas/:id" element={<AdminGate><ConversationDetail /></AdminGate>} />
+            <Route path="/avaliacoes" element={<AdminGate><Reviews /></AdminGate>} />
             
             {/* Vitrine pública */}
             <Route path="/vitrine" element={<Vitrine />} />
