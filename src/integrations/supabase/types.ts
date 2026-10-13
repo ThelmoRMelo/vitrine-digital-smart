@@ -71,6 +71,27 @@ export type Database = {
         }
         Relationships: []
       }
+      app_admin_credentials: {
+        Row: {
+          id: number
+          password_hash: string
+          password_version: number
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          password_hash: string
+          password_version?: number
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          password_hash?: string
+          password_version?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       business_config: {
         Row: {
           accent_color: string | null
