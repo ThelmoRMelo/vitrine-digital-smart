@@ -10,7 +10,13 @@ export async function generateGeminiContent(
   model: string,
   body: Record<string, unknown>,
   fetchImpl: typeof fetch = fetch,
+  requestSignal?: AbortSignal,
 ): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(45_000);
+  const signal = requestSignal
+    ? AbortSignal.any([timeoutSignal, requestSignal])
+    : timeoutSignal;
+
   return fetchImpl(`${API_BASE}/models/${model}:generateContent`, {
     method: 'POST',
     headers: {
@@ -18,7 +24,7 @@ export async function generateGeminiContent(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(45_000),
+    signal,
   });
 }
 
