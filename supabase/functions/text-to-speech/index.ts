@@ -37,7 +37,7 @@ const SPEED_MAX = 2;
 const MAX_INSTRUCTIONS_CHARS = 180;
 // ------------------------------------------------
 
-const MAX_CHARS = 600;
+const MAX_CHARS = 1800;
 
 function json(body: unknown, status = 200, cacheControl = 'no-store') {
   return new Response(JSON.stringify(body), {

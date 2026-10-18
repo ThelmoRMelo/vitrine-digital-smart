@@ -28,7 +28,7 @@ const CACHE_STORE_NAME = 'audio';
 const CACHE_VERSION = 1;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_PERSISTED_ENTRIES = 20;
-const MAX_PERSISTED_BLOB_BYTES = 1_500_000;
+const MAX_PERSISTED_BLOB_BYTES = 5_000_000;
 const MAX_MEMORY_ENTRIES = 12;
 
 // Apenas blobs pequenos ficam em memória. A chave contém texto somente enquanto a página estiver aberta.
@@ -194,7 +194,7 @@ function rememberSpeech(cacheKey: string, blob: Blob): void {
   }
 }
 
-function truncateAtSentence(text: string, limit = 600): string {
+function truncateAtSentence(text: string, limit = 1800): string {
   if (text.length <= limit) return text;
   const prefix = text.slice(0, limit);
   const sentenceEnds = [...prefix.matchAll(/[.!?](?:["'’”)}\]]*)?(?=\s|$)/gu)];
