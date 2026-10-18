@@ -97,13 +97,14 @@ async function getSpeechSrc(
 
       if (error) throw error;
 
-      const base64 = (data as { audio?: string })?.audio;
+      const speech = data as { audio?: string; mimeType?: string };
+      const base64 = speech?.audio;
 
       if (!base64) {
         throw new Error('sem áudio');
       }
 
-      const src = `data:audio/mpeg;base64,${base64}`;
+      const src = `data:${speech.mimeType || 'audio/wav'};base64,${base64}`;
 
       audioCache.set(cacheKey, src);
 

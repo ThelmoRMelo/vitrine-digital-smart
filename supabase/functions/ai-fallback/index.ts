@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { confirmedPriceReply, confirmedProductFallback, isCurrentPriceQuestion } from './confirmed-products.ts';
+import { geminiApiKey, geminiJson, geminiText, generateGeminiContent } from '../_shared/gemini.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -713,44 +714,37 @@ REGRAS ABSOLUTAS:
 ` : ''}`;
 
     // Montar mensagens com histórico
-    const aiMessages = [
-      { role: "system", content: systemPrompt },
-      ...history.map(h => ({ role: h.role, content: h.content })),
-      { role: 'system', content: 'Os preços, nomes e condições no histórico podem estar desatualizados. Use SOMENTE os dados recém-confirmados no bloco de produtos do sistema. Nunca trate uma saudação antiga como preço atual.' },
-      { role: "user", content: message }
-    ];
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      console.error("[ai-fallback] LOVABLE_API_KEY is not configured");
+    const apiKey = geminiApiKey();
+    if (!apiKey) {
+      console.error('[ai-fallback] GEMINI_API_KEY is not configured');
       return jsonResponse(confirmedProductFallback(focusedProduct || undefined));
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
+    const response = await generateGeminiContent(apiKey, 'gemini-3.5-flash-lite', {
+      systemInstruction: {
+        parts: [{ text: `${systemPrompt}\n\nOs preços, nomes e condições no histórico podem estar desatualizados. Use SOMENTE os dados recém-confirmados no bloco de produtos do sistema. Nunca trate uma saudação antiga como preço atual.` }],
       },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: aiMessages,
-        max_tokens: 900, // Aumentado para permitir formatação Markdown
-      }),
+      contents: [
+        ...history
+          .filter((item): item is ConversationMessage =>
+            item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string')
+          .map(item => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: item.content }] })),
+        { role: 'user', parts: [{ text: message }] },
+      ],
+      generationConfig: { maxOutputTokens: 900 },
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[ai-fallback] AI gateway returned HTTP ${response.status}:`, errorText);
+      console.error(`[ai-fallback] Gemini returned HTTP ${response.status}`);
       return jsonResponse(confirmedProductFallback(focusedProduct || undefined));
     }
 
-    const data = await response.json();
-    const gatewayContent = data?.choices?.[0]?.message?.content;
-    if (typeof gatewayContent !== 'string' || !gatewayContent.trim()) {
+    const data = await geminiJson(response);
+    const modelContent = geminiText(data);
+    if (!modelContent) {
       return jsonResponse('Não foi possível atender a esta solicitação. As informações cadastradas continuam disponíveis na vitrine.');
     }
-    let aiResponse = gatewayContent.trim();
+    let aiResponse = modelContent;
   // ============================================================
 // EXTRAIR RECOMENDAÇÕES DOS PRODUTOS
 // ============================================================

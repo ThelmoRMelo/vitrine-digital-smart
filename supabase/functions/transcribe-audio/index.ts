@@ -2,6 +2,7 @@
 // Recebe áudio (multipart/form-data), valida e devolve { text }
 // A chave da API nunca sai do servidor.
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
+import { geminiApiKey, geminiJson, geminiText, generateGeminiContent } from '../_shared/gemini.ts';
 
 const MAX_BYTES = 8 * 1024 * 1024; // ~8MB (60s de voz cabe folgado)
 const ALLOWED = [
@@ -20,22 +21,6 @@ const ALLOWED = [
   'video/webm',
 ];
 
-const EXT_BY_MIME: Record<string, string> = {
-  'audio/webm': 'webm',
-  'video/webm': 'webm',
-  'audio/ogg': 'ogg',
-  'audio/mp4': 'mp4',
-  'video/mp4': 'mp4',
-  'audio/x-m4a': 'm4a',
-  'audio/m4a': 'm4a',
-  'audio/aac': 'aac',
-  'audio/mpeg': 'mp3',
-  'audio/mpga': 'mp3',
-  'audio/wav': 'wav',
-  'audio/x-wav': 'wav',
-  'audio/wave': 'wav',
-};
-
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -51,9 +36,9 @@ Deno.serve(async (req) => {
     return json({ error: 'Método não permitido' }, 405);
   }
 
-  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  const apiKey = geminiApiKey();
   if (!apiKey) {
-    console.error('[transcribe-audio] LOVABLE_API_KEY ausente');
+    console.error('[transcribe-audio] GEMINI_API_KEY ausente');
     return json({ error: 'Serviço de transcrição não configurado.' }, 500);
   }
 
@@ -99,44 +84,70 @@ Deno.serve(async (req) => {
     return json({ error: 'Arquivo de áudio inválido ou corrompido.' }, 400);
   }
 
-  const ext = sniffed || EXT_BY_MIME[clientMime] || 'webm';
-
+  const mimeByFormat: Record<string, string> = {
+    webm: 'audio/webm', ogg: 'audio/ogg', mp4: 'audio/mp4',
+    wav: 'audio/wav', mp3: 'audio/mpeg',
+  };
+  const mimeType = mimeByFormat[sniffed];
+  let uploadedFileName: string | null = null;
   try {
-    const upstream = new FormData();
-    upstream.append('model', 'google/gemini-3.5-transcribe');
-    upstream.append('language', 'pt');
-    upstream.append(
-      'file',
-      new Blob([bytes], { type: clientMime || `audio/${ext}` }),
-      `recording.${ext}`,
-    );
-
-    const res = await fetch('https://ai.gateway.lovable.dev/v1/audio/transcriptions', {
+    const baseUrl = 'https://generativelanguage.googleapis.com';
+    const start = await fetch(`${baseUrl}/upload/v1beta/files`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: upstream,
+      headers: {
+        'x-goog-api-key': apiKey,
+        'X-Goog-Upload-Protocol': 'resumable',
+        'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': String(bytes.byteLength),
+        'X-Goog-Upload-Header-Content-Type': mimeType,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ file: { display_name: 'ania-audio-transcription' } }),
+      signal: AbortSignal.timeout(30_000),
     });
-
-    const bodyText = await res.text();
-
-    if (!res.ok) {
-      console.error('[transcribe-audio] upstream', res.status, bodyText.slice(0, 500));
-      if (res.status === 429) {
+    const uploadUrl = start.headers.get('x-goog-upload-url');
+    if (!start.ok || !uploadUrl || !uploadUrl.startsWith(`${baseUrl}/`)) {
+      console.error('[transcribe-audio] Gemini upload initialization failed:', start.status);
+      if (start.status === 429) {
         return json({ error: 'Muitas gravações em sequência. Aguarde alguns segundos.' }, 429);
       }
-      if (res.status === 402 || res.status === 403) {
-        return json({ error: 'Transcrição indisponível no momento.' }, res.status);
+      if (start.status === 401 || start.status === 403) {
+        return json({ error: 'Transcrição indisponível no momento.' }, 503);
       }
       return json({ error: 'Não consegui transcrever esse áudio. Tente novamente.' }, 502);
     }
 
-    let text = '';
-    try {
-      const parsed = JSON.parse(bodyText);
-      text = (parsed?.text ?? '').toString().trim();
-    } catch {
-      text = bodyText.trim();
+    const upload = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'X-Goog-Upload-Offset': '0',
+        'X-Goog-Upload-Command': 'upload, finalize',
+        'Content-Type': mimeType,
+      },
+      body: bytes,
+      signal: AbortSignal.timeout(45_000),
+    });
+    const uploaded = await geminiJson(upload) as { file?: { name?: string; uri?: string; mimeType?: string } } | null;
+    const fileUri = uploaded?.file?.uri;
+    uploadedFileName = uploaded?.file?.name || null;
+    if (!upload.ok || !fileUri || !uploadedFileName || !/^files\/[A-Za-z0-9_-]+$/.test(uploadedFileName)) {
+      console.error('[transcribe-audio] Gemini upload finalization failed:', upload.status);
+      if (upload.status === 429) return json({ error: 'Muitas gravações em sequência. Aguarde alguns segundos.' }, 429);
+      return json({ error: 'Não consegui transcrever esse áudio. Tente novamente.' }, 502);
     }
+
+    const res = await generateGeminiContent(apiKey, 'gemini-3.5-transcribe', {
+      contents: [{ parts: [{ fileData: { fileUri, mimeType: uploaded.file?.mimeType || mimeType } }] }],
+      generationConfig: { audioTranscriptionConfig: { languageCodes: ['pt-BR'] } },
+    });
+    if (!res.ok) {
+      console.error('[transcribe-audio] Gemini transcription failed:', res.status);
+      if (res.status === 429) return json({ error: 'Muitas gravações em sequência. Aguarde alguns segundos.' }, 429);
+      if (res.status === 401 || res.status === 403) return json({ error: 'Transcrição indisponível no momento.' }, 503);
+      return json({ error: 'Não consegui transcrever esse áudio. Tente novamente.' }, 502);
+    }
+
+    const text = geminiText(await geminiJson(res));
 
     if (!text) {
       return json({ error: 'Nenhuma fala foi identificada.' }, 422);
@@ -144,7 +155,20 @@ Deno.serve(async (req) => {
 
     return json({ text });
   } catch (err) {
-    console.error('[transcribe-audio] error:', err);
+    console.error('[transcribe-audio] Gemini request failed');
     return json({ error: 'Não consegui transcrever esse áudio. Tente novamente.' }, 500);
+  } finally {
+    if (uploadedFileName) {
+      try {
+        const cleanup = await fetch(`https://generativelanguage.googleapis.com/v1beta/${uploadedFileName}`, {
+          method: 'DELETE',
+          headers: { 'x-goog-api-key': apiKey },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!cleanup.ok) console.warn('[transcribe-audio] Uploaded file cleanup failed:', cleanup.status);
+      } catch {
+        console.warn('[transcribe-audio] Uploaded file cleanup request failed');
+      }
+    }
   }
 });

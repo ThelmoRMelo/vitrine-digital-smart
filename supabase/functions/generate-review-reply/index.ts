@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { geminiApiKey, geminiJson, geminiText, generateGeminiContent } from '../_shared/gemini.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,33 +59,31 @@ Escreva em português do Brasil.`;
 
 Responda como ANIA:`;
 
-    const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${Deno.env.get('LOVABLE_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      }),
-    });
-
-    if (!aiRes.ok) {
-      const text = await aiRes.text();
-      return new Response(JSON.stringify({ error: 'AI gateway error', detail: text }), {
-        status: 502,
+    const apiKey = geminiApiKey();
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'Serviço de respostas não configurado.' }), {
+        status: 503,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const aiData = await aiRes.json();
-    const reply = aiData?.choices?.[0]?.message?.content?.trim();
+    const aiRes = await generateGeminiContent(apiKey, 'gemini-3.5-flash-lite', {
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      generationConfig: { maxOutputTokens: 200 },
+    });
+
+    if (!aiRes.ok) {
+      console.error(`[generate-review-reply] Gemini returned HTTP ${aiRes.status}`);
+      return new Response(JSON.stringify({ error: 'Não foi possível gerar uma resposta agora.' }), {
+        status: aiRes.status === 429 ? 429 : 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const reply = geminiText(await geminiJson(aiRes));
     if (!reply) {
-      return new Response(JSON.stringify({ error: 'No reply from AI' }), {
+      return new Response(JSON.stringify({ error: 'O provedor não retornou uma resposta válida.' }), {
         status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -106,7 +105,8 @@ Responda como ANIA:`;
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
+    console.error('[generate-review-reply] Request failed');
+    return new Response(JSON.stringify({ error: 'Não foi possível gerar uma resposta agora.' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

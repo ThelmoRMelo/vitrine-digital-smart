@@ -67,9 +67,10 @@ export function VoiceSettingsSection() {
         body: { text: VOICE_SAMPLE_TEXT, voice, instructions, speed },
       });
       if (error) throw error;
-      const base64 = (data as { audio?: string })?.audio;
+      const speech = data as { audio?: string; mimeType?: string };
+      const base64 = speech?.audio;
       if (!base64) throw new Error('sem áudio');
-      sampleAudio = new Audio(`data:audio/mpeg;base64,${base64}`);
+      sampleAudio = new Audio(`data:${speech.mimeType || 'audio/wav'};base64,${base64}`);
       await sampleAudio.play();
     } catch (err) {
       console.error('[VoiceSettings] amostra', err);
