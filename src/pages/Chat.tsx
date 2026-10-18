@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { ProductGalleryViewer, ProductGalleryPreview } from '@/components/ProductGalleryViewer';
 import { CatalogCards } from '@/components/chat/CatalogCards';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
+import { currentProductWelcome } from '@/lib/product-welcome';
 //import { SpeakButton, playMessageSpeech, stopMessageSpeech, cleanTextForSpeech } from '@/components/chat/SpeakButton';
 import {
   SpeakButton,
@@ -124,7 +125,7 @@ export default function Chat() {
   // Reproduz automaticamente APENAS a última mensagem válida do bot,
   // uma única vez por mensagem. Ignora catálogo e textos vazios após limpeza.
   useEffect(() => {
-    if (!autoSpeakEnabled) return;
+    if (!autoSpeakEnabled || loadingProducts || conversationLoading) return;
 
     const lastBotMessage = [...messages]
   .reverse()
@@ -137,16 +138,22 @@ export default function Chat() {
     
     if (!lastBotMessage) return;
     if (lastAutoSpokenMessageIdRef.current === lastBotMessage.id) return;
-    if (!cleanTextForSpeech(lastBotMessage.content)) return;
+    const speechText = lastBotMessage.categoria === 'Boas-vindas' && productId
+      ? (() => {
+          const product = supabaseProducts.find(p => p.id === productId);
+          return product ? currentProductWelcome(product, lastBotMessage.content.includes('Novo atendimento iniciado')) : 'Preciso verificar as informações atuais deste produto.';
+        })()
+      : lastBotMessage.content;
+    if (!cleanTextForSpeech(speechText)) return;
 
     // Marca ANTES de falar para que re-renderizações não disparem de novo
     lastAutoSpokenMessageIdRef.current = lastBotMessage.id;
-    void playMessageSpeech(lastBotMessage.id, lastBotMessage.content, {
+    void playMessageSpeech(lastBotMessage.id, speechText, {
       voice: config?.assistant_voice,
       instructions: config?.assistant_voice_style,
       speed: config?.assistant_voice_speed,
     });
-  }, [messages, autoSpeakEnabled, config?.assistant_voice, config?.assistant_voice_style, config?.assistant_voice_speed]);
+  }, [messages, autoSpeakEnabled, loadingProducts, conversationLoading, productId, supabaseProducts, config?.assistant_voice, config?.assistant_voice_style, config?.assistant_voice_speed]);
 
   // Gravação de voz -> transcrição preenche o campo de texto (usuário revisa e envia)
   const voice = useVoiceRecorder({
@@ -259,11 +266,7 @@ export default function Chat() {
   // Gerar mensagem de boas-vindas baseada no contexto
   const getWelcomeMessage = useCallback((isNewSession: boolean = false) => {
     if (contextProduct) {
-      const price = Number(contextProduct.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-      if (isNewSession) {
-        return `✨ **Novo atendimento iniciado!**\n\nOlá! 👋 Agora estou focada em te ajudar com o **${contextProduct.name}**! O valor é ${price}. Em que posso ajudar?`;
-      }
-      return `Olá! 👋 Você está interessado no **${contextProduct.name}**! O valor é ${price}. Posso te ajudar?`;
+      return currentProductWelcome(contextProduct, isNewSession);
     } else if (supabaseProducts.length > 0) {
       if (isNewSession) {
         return `✨ **Novo atendimento iniciado!**\n\nOlá! 👋 Bem-vindo${business.nome ? ` à ${business.nome}` : ''}! Temos ${supabaseProducts.length} produto(s) disponíveis. Como posso ajudar?`;
@@ -358,7 +361,14 @@ if (!contextProduct && FULL_CATALOG_REGEX.test(trimmedInput)) {
 }
 
     try {
-      const productsList = supabaseProducts.map(p => ({
+      // Refresh public product facts before every request; never send a stale page snapshot.
+      const { data: freshProducts, error: refreshError } = await supabase.from('products').select('*').eq('active', true);
+      if (refreshError || !freshProducts) throw new Error('Product verification failed');
+      const currentProducts = storefront?.tenant_id ? freshProducts.filter(p => p.tenant_id === storefront.tenant_id) : freshProducts;
+      setSupabaseProducts(currentProducts);
+      const currentProduct = productId ? currentProducts.find(p => p.id === productId) : null;
+      if (productId && !currentProduct) throw new Error('Product no longer available');
+      const productsList = currentProducts.map(p => ({
   id: p.id,
   nome: p.name,
   preco: Number(p.price),
@@ -378,27 +388,27 @@ if (!contextProduct && FULL_CATALOG_REGEX.test(trimmedInput)) {
   linkPagamento: p.payment_link || ''
 }));
 
-      const productContext = contextProduct ? {
-  id: contextProduct.id,
-  nome: contextProduct.name,
-  preco: contextProduct.price,
+      const productContext = currentProduct ? {
+  id: currentProduct.id,
+  nome: currentProduct.name,
+  preco: currentProduct.price,
 
   // Descrição pública
-  descricao: contextProduct.short_description || '',
+  descricao: currentProduct.short_description || '',
 
   // Conhecimento completo da ANIA sobre este produto
-  conhecimentoIA: contextProduct.long_description || '',
+  conhecimentoIA: currentProduct.long_description || '',
 
-  categoria: contextProduct.category || '',
-  precoMinimo: contextProduct.min_price_allowed,
-  formasPagamento: contextProduct.payment_methods || [],
-  infoEntrega: contextProduct.delivery_info || '',
-  linkPagamento: contextProduct.payment_link || ''
+  categoria: currentProduct.category || '',
+  precoMinimo: currentProduct.min_price_allowed,
+  formasPagamento: currentProduct.payment_methods || [],
+  infoEntrega: currentProduct.delivery_info || '',
+  linkPagamento: currentProduct.payment_link || ''
 } : null;
 
       const recentHistory = messages.slice(-6).map(m => ({
         role: m.sender === 'user' ? 'user' : 'assistant',
-        content: m.content
+        content: m.categoria === 'Boas-vindas' && currentProduct ? currentProductWelcome(currentProduct) : m.content
       }));
 
 const { data, error } = await supabase.functions.invoke('ai-fallback', {
@@ -408,7 +418,7 @@ const { data, error } = await supabase.functions.invoke('ai-fallback', {
           businessCategory: tenantConfig?.business_category || config?.business_category || business.categoria || 'varejo',
           products: productsList,
           productContext,
-          productId: contextProduct?.id || null,
+          productId: currentProduct?.id || productId || null,
           negotiationState: negotiation,
           conversationHistory: recentHistory,
           lastBotResponse,
@@ -426,7 +436,7 @@ const { data, error } = await supabase.functions.invoke('ai-fallback', {
   console.error('[Chat] Dados retornados pela função:', data);
 
   await addMessage(
-    `⚠️ Erro ao processar sua mensagem.\n\nDetalhes técnicos: ${error.message || 'erro desconhecido'}`,
+    'Não consegui verificar as informações agora. Consulte a vitrine para conferir os dados do produto antes da compra.',
     'bot',
     'Erro'
   );
@@ -475,7 +485,8 @@ await addMessage(
       }
 
     } catch (err) {
-      await addMessage('Desculpe, tive um problema. Pode repetir?', 'bot', 'Erro');
+      console.error('[Chat] Product request failed:', err);
+      await addMessage('Preciso verificar as informações atuais antes de informar preços ou condições. Consulte a vitrine antes da compra.', 'bot', 'Erro');
     } finally {
       setIsTyping(false);
       inputRef.current?.focus();
@@ -619,6 +630,10 @@ await addMessage(
         )}
 
         {messages.map((message, index) => {
+          // Only the generated welcome is a live projection; saved customer history is untouched.
+          const displayContent = message.sender === 'bot' && message.categoria === 'Boas-vindas' && productId
+            ? contextProduct ? currentProductWelcome(contextProduct, message.content.includes('Novo atendimento iniciado')) : 'Preciso verificar as informações atuais deste produto.'
+            : message.content;
           const isCatalog = message.content === CATALOG_MARKER;
 const isFilteredCatalog = message.content.startsWith(FILTERED_CATALOG_PREFIX);
 
@@ -703,12 +718,12 @@ const catalogProducts = isFilteredCatalog
                 />
 
                 <div className="text-[15px] leading-relaxed [&_a]:text-[var(--chat-link,inherit)]">
-                  <MarkdownMessage content={message.content} />
+                  <MarkdownMessage content={displayContent} />
                 </div>
                 {message.sender === 'bot' && (
                   <SpeakButton
                     messageId={message.id}
-                    text={message.content}
+                    text={displayContent}
                     voice={config?.assistant_voice}
                     instructions={config?.assistant_voice_style}
                     speed={config?.assistant_voice_speed}

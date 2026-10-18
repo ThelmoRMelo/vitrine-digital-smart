@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { confirmedPriceReply, confirmedProductFallback, isCurrentPriceQuestion } from './confirmed-products.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,11 +17,6 @@ function jsonResponse(
     JSON.stringify({ response, recommendedProductIds, negotiationUpdate, closingUpdate }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
-}
-
-function serviceFallback(storeName: string, productName?: string) {
-  const focus = productName ? ` sobre ${productName}` : "";
-  return `Oi! Sou a ANIA da ${storeName}. Estou com uma instabilidade temporária${focus}. Pode tentar novamente em instantes?`;
 }
 
 interface ProductInfo {
@@ -91,8 +87,8 @@ serve(async (req) => {
       message, 
       businessName, 
       businessCategory, 
-      products,
-      productContext,
+      products: clientProducts,
+      productContext: clientProductContext,
       productId,
       negotiationState,
       conversationHistory,
@@ -101,7 +97,40 @@ serve(async (req) => {
       mode
     } = await req.json();
 
+    if (typeof message !== 'string' || !message.trim() || message.length > 10000) {
+      return new Response(JSON.stringify({ error: 'Mensagem inválida.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Public catalog permissions apply: never trust client prices or use privileged reads.
+    const supaUrl = Deno.env.get('SUPABASE_URL');
+    const supaKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!supaUrl || !supaKey) return jsonResponse('Preciso verificar as informações cadastradas antes de informar preços ou condições.');
+    const catalogClient = createClient(supaUrl, supaKey);
+    const requestedId = productId || clientProductContext?.id;
+    const { data: rows, error: catalogError } = await catalogClient.from('products')
+      .select('id, name, price, short_description, long_description, category, min_price_allowed, payment_methods, delivery_info, payment_link, tenant_id')
+      .eq('active', true);
+    if (catalogError || !rows) {
+      console.error('[ai-fallback] Product verification failed');
+      return jsonResponse('Preciso verificar as informações cadastradas antes de informar preços ou condições.');
+    }
+    const focusedRow = requestedId ? rows.find(p => p.id === requestedId) : null;
+    if (requestedId && !focusedRow) return jsonResponse('Não consegui confirmar este produto ativo. Consulte a vitrine antes de prosseguir.');
+    const requestedIds = new Set(Array.isArray(clientProducts) ? clientProducts.map(p => p?.id) : []);
+    const products: ProductInfo[] = rows
+      .filter(p => focusedRow ? p.tenant_id === focusedRow.tenant_id : requestedIds.has(p.id))
+      .map(p => ({
+        id: p.id, nome: p.name, preco: p.price == null ? NaN : Number(p.price),
+        descricao: p.short_description || '', conhecimentoIA: p.long_description || '',
+        categoria: p.category || '', precoMinimo: p.min_price_allowed,
+        formasPagamento: p.payment_methods || [], infoEntrega: p.delivery_info || '',
+        linkPagamento: p.payment_link || '',
+      }));
+    const productContext = focusedRow ? products.find(p => p.id === focusedRow.id) || null : null;
     const chatMode: 'vitrine' | 'product' = mode === 'vitrine' || !productContext ? 'vitrine' : 'product';
+
+    // A factual price lookup does not require AI credits and never advances sales state.
+    if (productContext && isCurrentPriceQuestion(message)) return jsonResponse(confirmedPriceReply(productContext));
 
     // Load global ANIA settings (best-effort)
     let aniaSettings: any = null;
@@ -687,13 +716,14 @@ REGRAS ABSOLUTAS:
     const aiMessages = [
       { role: "system", content: systemPrompt },
       ...history.map(h => ({ role: h.role, content: h.content })),
+      { role: 'system', content: 'Os preços, nomes e condições no histórico podem estar desatualizados. Use SOMENTE os dados recém-confirmados no bloco de produtos do sistema. Nunca trate uma saudação antiga como preço atual.' },
       { role: "user", content: message }
     ];
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       console.error("[ai-fallback] LOVABLE_API_KEY is not configured");
-      return jsonResponse(serviceFallback(storeName, focusedProduct?.nome));
+      return jsonResponse(confirmedProductFallback(focusedProduct || undefined));
     }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -712,14 +742,15 @@ REGRAS ABSOLUTAS:
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[ai-fallback] AI gateway returned HTTP ${response.status}:`, errorText);
-      return jsonResponse(serviceFallback(storeName, focusedProduct?.nome));
+      return jsonResponse(confirmedProductFallback(focusedProduct || undefined));
     }
 
     const data = await response.json();
     const gatewayContent = data?.choices?.[0]?.message?.content;
-    let aiResponse = typeof gatewayContent === "string" && gatewayContent.trim()
-      ? gatewayContent.trim()
-      : serviceFallback(storeName, focusedProduct?.nome);
+    if (typeof gatewayContent !== 'string' || !gatewayContent.trim()) {
+      return jsonResponse('Não foi possível atender a esta solicitação. As informações cadastradas continuam disponíveis na vitrine.');
+    }
+    let aiResponse = gatewayContent.trim();
   // ============================================================
 // EXTRAIR RECOMENDAÇÕES DOS PRODUTOS
 // ============================================================
