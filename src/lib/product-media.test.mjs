@@ -54,7 +54,7 @@ test('validates MP4 and WebM by file contents, not only by extension', async () 
   const overLimit = { ...atLimit, size: MAX_VIDEO_FILE_BYTES + 1 };
   assert.equal(await validateVideoFile(atLimit), true);
   assert.equal(await validateVideoFile(overLimit), false);
-  assert.equal(MAX_VIDEO_FILE_BYTES, 50 * 1024 * 1024);
+  assert.equal(MAX_VIDEO_FILE_BYTES, 20 * 1024 * 1024);
 });
 
 test('treats legacy records without media_type as images', () => {

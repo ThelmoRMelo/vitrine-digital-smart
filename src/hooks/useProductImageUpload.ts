@@ -2,16 +2,28 @@
 import { useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { getAdminToken } from '@/lib/adminAuth';
 import { MAX_VIDEO_FILE_BYTES, validateVideoFile } from '@/lib/product-media';
+import { getVideoAuthorizationErrorMessage, getVideoStorageErrorMessage } from '@/lib/video-upload-errors';
 
 const BUCKET_NAME = 'product-images';
 const VIDEO_BUCKET_NAME = 'product-videos';
 
-interface AuthSessionReader {
-  getSession: () => Promise<{
-    data: { session: { user: { id: string } } | null };
-    error: unknown;
-  }>;
+interface SignedVideoUpload {
+  path?: string;
+  token?: string;
+  error?: string;
+}
+
+async function readFunctionFailure(error: unknown): Promise<{ status: number; code: string | null }> {
+  if (!error || typeof error !== 'object') return { status: 0, code: null };
+  const context = (error as { context?: unknown }).context;
+  if (!(context instanceof Response)) return { status: 0, code: null };
+  const payload: unknown = await context.clone().json().catch(() => null);
+  const code = payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
+    ? payload.error
+    : null;
+  return { status: context.status, code };
 }
 
 export function useProductImageUpload() {
@@ -34,7 +46,7 @@ export function useProductImageUpload() {
       }
       if (mediaType === 'video') {
         if (file.size > MAX_VIDEO_FILE_BYTES) {
-          toast.error('Vídeo muito grande. O limite é 50 MB por arquivo.');
+          toast.error('Vídeo muito grande. O limite é 20 MB por arquivo.');
           return null;
         }
         if ((file.type && !allowedTypes.includes(file.type)) || !(await validateVideoFile(file))) {
@@ -47,36 +59,80 @@ export function useProductImageUpload() {
       const fileName = `${Date.now()}-${crypto.randomUUID()}.${fileExt}`;
       let bucketName = BUCKET_NAME;
       let objectPath = fileName;
+      const contentType = mediaType === 'video' ? `video/${fileExt}` : file.type;
+      let adminToken: string | null = null;
+
       if (mediaType === 'video') {
-        const authSessionReader = supabase.auth as unknown as AuthSessionReader;
-        const { data: sessionData, error: sessionError } = await authSessionReader.getSession();
-        const userId = sessionData.session?.user.id;
-        if (sessionError || !userId) {
-          toast.error('Entre novamente na conta administrativa para enviar vídeos.');
+        adminToken = getAdminToken();
+        if (!adminToken) {
+          toast.error('A sessão administrativa não está disponível. Entre no painel e tente enviar o vídeo novamente.');
           return null;
         }
         bucketName = VIDEO_BUCKET_NAME;
-        objectPath = `${userId}/${fileName}`;
       }
       setProgress(30);
-      const contentType = mediaType === 'video' ? `video/${fileExt}` : file.type;
-      const { data, error } = await supabase.storage.from(bucketName).upload(objectPath, file, {
-        cacheControl: '3600',
-        upsert: false,
-        ...(contentType ? { contentType } : {}),
-      });
-      if (error) {
-        console.error('[useProductImageUpload] Erro no upload:', error);
-        toast.error(`Erro ao enviar ${mediaType === 'video' ? 'o vídeo' : 'a imagem'}. Verifique a configuração do armazenamento.`);
-        return null;
+
+      let storedPath: string;
+      if (mediaType === 'video') {
+        const { data: signedUpload, error: authorizationError } = await supabase.functions.invoke<SignedVideoUpload>('admin-auth', {
+          body: { action: 'create-video-upload-url', token: adminToken, fileSize: file.size, contentType },
+        });
+        if (authorizationError) {
+          const failure = await readFunctionFailure(authorizationError);
+          toast.error(getVideoAuthorizationErrorMessage(failure.status, failure.code));
+          return null;
+        }
+        if (signedUpload?.error === 'admin_session_invalid') {
+          toast.error('Sua sessão administrativa expirou. Entre novamente no painel para continuar.');
+          return null;
+        }
+        if (signedUpload?.error === 'video_too_large') {
+          toast.error('Vídeo muito grande. O limite é 20 MB por arquivo.');
+          return null;
+        }
+        if (!signedUpload?.path || !signedUpload.token) {
+          toast.error('O serviço não autorizou o envio do vídeo. Tente novamente.');
+          return null;
+        }
+
+        const { data, error } = await supabase.storage.from(VIDEO_BUCKET_NAME).uploadToSignedUrl(
+          signedUpload.path,
+          signedUpload.token,
+          file,
+          { cacheControl: '3600', contentType },
+        );
+        if (error) {
+          toast.error(getVideoStorageErrorMessage(error.statusCode, error.message));
+          console.error('[useProductImageUpload] Storage rejected a signed video upload.', { statusCode: error.statusCode });
+          return null;
+        }
+        storedPath = data.path;
+      } else {
+        const { data, error } = await supabase.storage.from(BUCKET_NAME).upload(objectPath, file, {
+          cacheControl: '3600',
+          upsert: false,
+          ...(contentType ? { contentType } : {}),
+        });
+        if (error) {
+          console.error('[useProductImageUpload] Erro no upload:', error);
+          toast.error('Erro ao enviar a imagem. Verifique a configuração do armazenamento.');
+          return null;
+        }
+        storedPath = data.path;
       }
+
       setProgress(70);
-      const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(data.path);
+      const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(storedPath);
       setProgress(100);
       return urlData.publicUrl;
     } catch (err) {
-      console.error('[useProductImageUpload] Erro inesperado:', err);
-      toast.error(`Não foi possível enviar ${mediaType === 'video' ? 'o vídeo' : 'a imagem'}.`);
+      if (mediaType === 'video') {
+        console.error('[useProductImageUpload] Unexpected video upload failure.');
+        toast.error('Não foi possível concluir o envio do vídeo. Verifique sua conexão e tente novamente.');
+      } else {
+        console.error('[useProductImageUpload] Erro inesperado:', err);
+        toast.error('Não foi possível enviar a imagem.');
+      }
       return null;
     } finally {
       uploadLock.current = false;

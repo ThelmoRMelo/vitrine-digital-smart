@@ -7,6 +7,7 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const ITERATIONS = 310_000;
 const SESSION_DAYS = 30;
+const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
 const enc = new TextEncoder();
 
 const b64u = (buf: ArrayBuffer | Uint8Array) => {
@@ -98,6 +99,61 @@ Deno.serve(async (req) => {
     if (action === "verify") {
       const t = await readToken(body.token);
       return json({ valid: !!t && t.v === creds.password_version });
+    }
+
+    if (action === "create-video-upload-url") {
+      const t = await readToken(body.token);
+      if (!t || t.v !== creds.password_version) {
+        return json({ error: "admin_session_invalid" }, 401);
+      }
+
+      const fileSize = Number(body.fileSize);
+      const contentType = body.contentType;
+      if (!Number.isSafeInteger(fileSize) || fileSize < 1) {
+        return json({ error: "invalid_file" }, 400);
+      }
+      if (fileSize > MAX_VIDEO_BYTES) {
+        return json({ error: "video_too_large" }, 413);
+      }
+
+      const extension = contentType === "video/mp4" ? "mp4" : contentType === "video/webm" ? "webm" : null;
+      if (!extension) return json({ error: "unsupported_video_type" }, 415);
+
+      const path = `${crypto.randomUUID()}.${extension}`;
+      const { data, error } = await db.storage
+        .from("product-videos")
+        .createSignedUploadUrl(path, { upsert: false });
+      if (error || !data?.token) {
+        const statusCode = Number(error?.statusCode);
+        if (statusCode === 403) return json({ error: "video_upload_forbidden" }, 403);
+        console.error("[admin-auth] Could not create a signed product video upload URL.");
+        return json({ error: "video_upload_unavailable" }, 503);
+      }
+
+      return json({ path: data.path, token: data.token });
+    }
+
+    if (action === "delete-product-video") {
+      const t = await readToken(body.token);
+      if (!t || t.v !== creds.password_version) {
+        return json({ error: "admin_session_invalid" }, 401);
+      }
+
+      const path = body.path;
+      if (typeof path !== "string" || path.length > 512 || path.startsWith("/") || path.includes("\\")) {
+        return json({ error: "invalid_video_path" }, 400);
+      }
+      const segments = path.split("/");
+      if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
+        return json({ error: "invalid_video_path" }, 400);
+      }
+
+      const { error } = await db.storage.from("product-videos").remove([path]);
+      if (error) {
+        console.error("[admin-auth] Could not remove a product video object.");
+        return json({ error: "video_delete_unavailable" }, 503);
+      }
+      return json({ success: true });
     }
 
     if (action === "change") {

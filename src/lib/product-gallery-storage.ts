@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import { getAdminToken } from '@/lib/adminAuth';
 import type { ProductMediaType } from '@/lib/product-media';
 
 type GeneratedProductImageRow = Database['public']['Tables']['product_images']['Row'];
@@ -80,8 +81,12 @@ export async function removeProductVideoObject(publicUrl: string): Promise<boole
     if (url.origin !== base.origin || !url.pathname.startsWith(pathPrefix)) return false;
     const objectPath = decodeURIComponent(url.pathname.slice(pathPrefix.length));
     if (!objectPath) return false;
-    const { error } = await supabase.storage.from('product-videos').remove([objectPath]);
-    return !error;
+    const adminToken = getAdminToken();
+    if (!adminToken) return false;
+    const { data, error } = await supabase.functions.invoke<{ success?: boolean }>('admin-auth', {
+      body: { action: 'delete-product-video', token: adminToken, path: objectPath },
+    });
+    return !error && data?.success === true;
   } catch {
     return false;
   }
