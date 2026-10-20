@@ -42,9 +42,9 @@ export function ProductSection({
   if (products.length === 0 && heroProducts.length === 0) return null;
 
   return (
-    <section className="py-8">
+    <section className={layout === 'featured' ? 'py-5 md:py-6' : 'py-8'}>
       {/* Section header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className={`flex items-center justify-between ${layout === 'featured' ? 'mb-3' : 'mb-6'}`}>
         <h2 
           className="text-2xl md:text-3xl font-bold"
           style={{ fontFamily: `'${theme.fonts.heading}', sans-serif` }}
@@ -66,7 +66,7 @@ export function ProductSection({
 
       {/* Products */}
       {layout === 'featured' ? (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {heroProducts.length > 0 ? (
             <HeroCarousel
               products={heroProducts}

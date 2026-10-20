@@ -120,9 +120,9 @@ export function ProductCard({
         <div className="grid md:grid-cols-2 gap-0">
 
           {/* Content */}
-          <div className="p-6 md:p-8 flex flex-col justify-center order-2 md:order-1">
+          <div className="p-5 md:p-6 flex flex-col justify-center order-2 md:order-1">
             {showBestSeller && (
-              <span className="inline-flex items-center w-fit bg-primary/20 text-primary text-xs font-semibold px-3 py-1 rounded-full mb-4">
+              <span className="inline-flex items-center w-fit bg-primary/20 text-primary text-xs font-semibold px-3 py-1 rounded-full mb-3">
                 Mais vendido
               </span>
             )}
@@ -135,17 +135,17 @@ export function ProductCard({
               {product.name}
             </h3>
 
-            <ProductRatingSummary productId={product.id} className="mb-4" />
+            <ProductRatingSummary productId={product.id} className="mb-3" />
 
             {product.long_description && (
-              <p className="text-sm text-muted-foreground mb-4 line-clamp-3">
+              <p className="text-sm text-muted-foreground mb-3 line-clamp-3">
                 {product.long_description}
               </p>
             )}
 
             {/* Benefits */}
             {benefits.length > 0 && (
-              <div className="grid grid-cols-2 gap-2 mb-6">
+              <div className="grid grid-cols-2 gap-2 mb-4">
                 {benefits.slice(0, 6).map((b, i) => (
                   <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Check className="w-4 h-4 text-primary shrink-0" />
@@ -158,7 +158,7 @@ export function ProductCard({
             )}
 
             {/* Avaliações compactas - acima dos botões */}
-            <div className="mb-6">
+            <div className="mb-4">
               <ReviewsSummaryModal
                 productId={product.id}
                 tenantId={product.tenant_id ?? null}
@@ -183,14 +183,14 @@ export function ProductCard({
 
           {/* Image */}
           <div
-            className="relative h-64 md:h-full min-h-[300px] order-1 md:order-2 cursor-pointer"
+            className="relative flex h-52 sm:h-60 md:h-full md:min-h-[280px] items-center justify-center overflow-hidden bg-muted/20 p-4 sm:p-5 order-1 md:order-2 cursor-pointer"
             onClick={handleCardClick}
           >
             {product.image_url ? (
               <img
                 src={product.image_url}
                 alt={product.name}
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                className="w-full h-full object-contain object-center"
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">

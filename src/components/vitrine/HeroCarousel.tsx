@@ -144,7 +144,7 @@ export function HeroCarousel({
             <ChevronRight className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center justify-center gap-2 mt-4">
+          <div className="flex items-center justify-center gap-2 mt-3">
             {products.map((p, i) => (
               <button
                 key={p.id}
