@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getAdminToken } from '@/lib/adminAuth';
 import { MAX_VIDEO_FILE_BYTES, validateVideoFile } from '@/lib/product-media';
-import { getVideoAuthorizationErrorMessage, getVideoStorageErrorMessage } from '@/lib/video-upload-errors';
+import { getVideoAuthorizationErrorMessage, getVideoStorageErrorMessage, type VideoUploadDiagnostic } from '@/lib/video-upload-errors';
 
 const BUCKET_NAME = 'product-images';
 const VIDEO_BUCKET_NAME = 'product-videos';
@@ -15,15 +15,22 @@ interface SignedVideoUpload {
   error?: string;
 }
 
-async function readFunctionFailure(error: unknown): Promise<{ status: number; code: string | null }> {
+async function readFunctionFailure(error: unknown): Promise<{ status: number; code: string | null; diagnostic?: VideoUploadDiagnostic }> {
   if (!error || typeof error !== 'object') return { status: 0, code: null };
   const context = (error as { context?: unknown }).context;
   if (!(context instanceof Response)) return { status: 0, code: null };
   const payload: unknown = await context.clone().json().catch(() => null);
-  const code = payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
-    ? payload.error
-    : null;
-  return { status: context.status, code };
+  if (!payload || typeof payload !== 'object') return { status: context.status, code: null };
+  const body = payload as Record<string, unknown>;
+  return {
+    status: context.status,
+    code: typeof body.error === 'string' ? body.error : null,
+    diagnostic: {
+      storageStatus: typeof body.storageStatus === 'number' ? body.storageStatus : null,
+      storageCode: typeof body.storageCode === 'string' ? body.storageCode : null,
+      storageMessage: typeof body.storageMessage === 'string' ? body.storageMessage : null,
+    },
+  };
 }
 
 export function useProductImageUpload() {
@@ -46,7 +53,7 @@ export function useProductImageUpload() {
       }
       if (mediaType === 'video') {
         if (file.size > MAX_VIDEO_FILE_BYTES) {
-          toast.error('Vídeo muito grande. O limite é 50 MB por arquivo.');
+          toast.error('Vídeo muito grande. O limite é 20 MB por arquivo.');
           return null;
         }
         if ((file.type && !allowedTypes.includes(file.type)) || !(await validateVideoFile(file))) {
@@ -79,7 +86,7 @@ export function useProductImageUpload() {
         });
         if (authorizationError) {
           const failure = await readFunctionFailure(authorizationError);
-          toast.error(getVideoAuthorizationErrorMessage(failure.status, failure.code));
+          toast.error(getVideoAuthorizationErrorMessage(failure.status, failure.code, failure.diagnostic));
           return null;
         }
         if (signedUpload?.error === 'admin_session_invalid') {
@@ -87,7 +94,7 @@ export function useProductImageUpload() {
           return null;
         }
         if (signedUpload?.error === 'video_too_large') {
-          toast.error('Vídeo muito grande. O limite é 50 MB por arquivo.');
+          toast.error('Vídeo muito grande. O limite é 20 MB por arquivo.');
           return null;
         }
         if (!signedUpload?.path || !signedUpload.token) {
@@ -102,8 +109,10 @@ export function useProductImageUpload() {
           { cacheControl: '3600', contentType },
         );
         if (error) {
-          toast.error(getVideoStorageErrorMessage(error.statusCode, error.message));
-          console.error('[useProductImageUpload] Storage rejected a signed video upload.', { statusCode: error.statusCode });
+          toast.error(getVideoStorageErrorMessage(error.statusCode, error.message, error.error));
+          console.error('[useProductImageUpload] Storage rejected a signed video upload.', {
+            statusCode: error.statusCode,
+          });
           return null;
         }
         storedPath = data.path;

@@ -7,7 +7,7 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const ITERATIONS = 310_000;
 const SESSION_DAYS = 30;
-const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
 const enc = new TextEncoder();
 
 const b64u = (buf: ArrayBuffer | Uint8Array) => {
@@ -80,6 +80,25 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 const slow = () => new Promise((r) => setTimeout(r, 600));
 
+function safeStorageDiagnostic(error: { statusCode?: unknown; status?: unknown; error?: unknown; name?: unknown; message?: unknown }) {
+  const rawStatus = Number(error.statusCode ?? error.status);
+  const rawCode = typeof error.error === "string" ? error.error : typeof error.name === "string" ? error.name : "storage_error";
+  const storageCode = /^[A-Za-z0-9_-]{1,80}$/.test(rawCode) ? rawCode : "storage_error";
+  const storageMessage = typeof error.message === "string"
+    ? error.message
+      .replace(/\bBearer\s+[A-Za-z0-9._~-]+/gi, "Bearer [redacted]")
+      .replace(/\b(?:eyJ[A-Za-z0-9_-]*\.){2}[A-Za-z0-9_-]+\b/g, "[redacted-token]")
+      .replace(/((?:authorization|api[_-]?key|token)\s*[:=]\s*)[^\s,;]+/gi, "$1[redacted]")
+      .slice(0, 240)
+    : null;
+
+  return {
+    storageStatus: Number.isFinite(rawStatus) && rawStatus > 0 ? rawStatus : null,
+    storageCode,
+    storageMessage,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -124,10 +143,14 @@ Deno.serve(async (req) => {
         .from("product-videos")
         .createSignedUploadUrl(path, { upsert: false });
       if (error || !data?.token) {
-        const statusCode = Number(error?.statusCode);
-        if (statusCode === 403) return json({ error: "video_upload_forbidden" }, 403);
-        console.error("[admin-auth] Could not create a signed product video upload URL.");
-        return json({ error: "video_upload_unavailable" }, 503);
+        const diagnostic = safeStorageDiagnostic(error ?? { message: "Signed upload URL was not returned." });
+        console.error("[admin-auth] Signed video upload URL creation failed.", diagnostic);
+        if (diagnostic.storageStatus === 403) return json({ error: "video_upload_forbidden", ...diagnostic }, 403);
+        if (diagnostic.storageStatus === 413) return json({ error: "video_too_large", ...diagnostic }, 413);
+        if (diagnostic.storageStatus === 404 || /bucket.*not found/i.test(diagnostic.storageMessage ?? "")) {
+          return json({ error: "video_bucket_missing", ...diagnostic }, 503);
+        }
+        return json({ error: "video_upload_unavailable", ...diagnostic }, 503);
       }
 
       return json({ path: data.path, token: data.token });

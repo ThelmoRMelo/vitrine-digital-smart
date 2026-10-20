@@ -9,9 +9,20 @@ test('reports session expiry only for an invalid administrative token', () => {
 
 test('distinguishes permission, size, and connectivity failures', () => {
   assert.match(getVideoAuthorizationErrorMessage(403, 'video_upload_forbidden'), /permissões do bucket/i);
-  assert.match(getVideoAuthorizationErrorMessage(413, 'video_too_large'), /50 MB/i);
+  assert.match(getVideoAuthorizationErrorMessage(413, 'video_too_large'), /20 MB/i);
   assert.match(getVideoAuthorizationErrorMessage(0, null), /conexão/i);
   assert.match(getVideoStorageErrorMessage('403', 'Forbidden'), /continua ativa/i);
-  assert.match(getVideoStorageErrorMessage('413', 'Payload too large'), /50 MB/i);
+  assert.match(getVideoStorageErrorMessage('413', 'Payload too large'), /20 MB/i);
   assert.match(getVideoStorageErrorMessage(undefined, undefined), /conexão/i);
+});
+
+test('keeps safe Storage diagnostics visible and redacts bearer tokens', () => {
+  const message = getVideoAuthorizationErrorMessage(503, 'video_upload_unavailable', {
+    storageStatus: 404,
+    storageCode: 'BucketNotFound',
+    storageMessage: 'Bucket not found. Bearer secret-token-value',
+  });
+  assert.match(message, /HTTP 404/i);
+  assert.match(message, /BucketNotFound/);
+  assert.doesNotMatch(message, /secret-token-value/);
 });
