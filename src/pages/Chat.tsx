@@ -3,7 +3,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Send, MessageCircle, Loader2, ArrowLeft, ShoppingBag, Trash2, Mic, Square, X, Volume2, VolumeX } from 'lucide-react';
+import { Send, MessageCircle, Loader2, ArrowLeft, ShoppingBag, ShoppingCart, Trash2, Mic, Square, X, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MarkdownMessage } from '@/components/MarkdownMessage';
@@ -29,6 +29,18 @@ import {
 
 // Chave estável da preferência de áudio automático (padrão: ativado)
 const AUTO_SPEAK_KEY = 'ania_auto_speak_enabled';
+
+function getValidPaymentUrl(paymentLink: string | null | undefined): string | null {
+  const value = paymentLink?.trim();
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 
 
 //const CATALOG_MARKER = '__CATALOG__';
@@ -236,6 +248,12 @@ export default function Chat() {
   const contextProduct = productId 
     ? supabaseProducts.find(p => p.id === productId)
     : null;
+  const productPaymentUrl = contextProduct?.active
+    ? getValidPaymentUrl(contextProduct.payment_link)
+    : null;
+  const initialWelcomeMessageId = messages.find(
+    message => message.sender === 'bot' && message.categoria === 'Boas-vindas'
+  )?.id;
 
   // Buscar imagens da galeria quando o produto tem galeria
   useEffect(() => {
@@ -720,6 +738,18 @@ const catalogProducts = isFilteredCatalog
                 <div className="text-[15px] leading-relaxed [&_a]:text-[var(--chat-link,inherit)]">
                   <MarkdownMessage content={displayContent} />
                 </div>
+                {message.id === initialWelcomeMessageId && productPaymentUrl && (
+                  <a
+                    href={productPaymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto"
+                    aria-label={`Adquirir ${contextProduct?.name ?? 'este produto'} agora`}
+                  >
+                    <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+                    Adquirir agora
+                  </a>
+                )}
                 {message.sender === 'bot' && (
                   <SpeakButton
                     messageId={message.id}
