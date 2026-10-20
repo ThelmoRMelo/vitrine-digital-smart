@@ -19,9 +19,10 @@ interface ReviewFormProps {
   productId: string;
   tenantId?: string | null;
   onSubmitted?: () => void;
+  compact?: boolean;
 }
 
-export function ReviewForm({ productId, tenantId, onSubmitted }: ReviewFormProps) {
+export function ReviewForm({ productId, tenantId, onSubmitted, compact = false }: ReviewFormProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [comment, setComment] = useState('');
@@ -75,9 +76,14 @@ export function ReviewForm({ productId, tenantId, onSubmitted }: ReviewFormProps
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="gradient" size="sm" className="gap-2">
+        <Button
+          variant="gradient"
+          size="sm"
+          className={compact ? 'gap-1 px-2' : 'gap-2'}
+          aria-label={compact ? 'Deixar avaliação' : undefined}
+        >
           <PenSquare className="w-4 h-4" />
-          Deixar avaliação
+          {compact ? 'Avaliar' : 'Deixar avaliação'}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">

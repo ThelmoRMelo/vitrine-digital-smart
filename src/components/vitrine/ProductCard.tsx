@@ -116,44 +116,44 @@ export function ProductCard({
 
   if (variant === 'featured') {
     return (
-      <div className="group relative h-full w-full glass-card rounded-3xl overflow-hidden transition-all duration-500 hover:shadow-glow">
-        <div className="grid h-full lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] gap-0">
+      <div className="group relative w-full glass-card rounded-3xl overflow-hidden transition-all duration-500 hover:shadow-glow">
+        <div className="grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] gap-0">
 
           {/* Content */}
-          <div className="p-4 sm:p-5 lg:p-6 flex flex-col justify-center order-2 lg:order-1">
+          <div className="p-3 sm:p-4 lg:p-5 flex flex-col justify-center order-2 lg:order-1">
             {showBestSeller && (
-              <span className="inline-flex items-center w-fit bg-primary/20 text-primary text-xs font-semibold px-3 py-1 rounded-full mb-2">
+              <span className="inline-flex items-center w-fit bg-primary/20 text-primary text-xs font-semibold px-2.5 py-0.5 rounded-full mb-1.5">
                 Mais vendido
               </span>
             )}
 
-            <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-start justify-between gap-2 mb-1">
               <h3
-                className="min-w-0 flex-1 line-clamp-2 text-xl sm:text-2xl lg:text-3xl font-bold cursor-pointer hover:text-primary transition-colors"
+                className="min-w-0 flex-1 line-clamp-2 text-lg sm:text-xl lg:text-2xl font-bold cursor-pointer hover:text-primary transition-colors"
                 style={{ fontFamily: `'${theme.fonts.heading}', sans-serif` }}
                 onClick={handleCardClick}
               >
                 {product.name}
               </h3>
-              <span className="shrink-0 whitespace-nowrap rounded-full bg-primary px-3 py-1.5 text-sm sm:text-base font-bold text-primary-foreground shadow-lg">
+              <span className="shrink-0 whitespace-nowrap rounded-full bg-primary px-2.5 py-1 text-xs sm:text-sm font-bold text-primary-foreground shadow-lg">
                 {formatPrice(product.price)}
               </span>
             </div>
 
-            <ProductRatingSummary productId={product.id} className="mb-2" />
+            <ProductRatingSummary productId={product.id} className="mb-1.5" />
 
             {product.long_description && (
-              <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+              <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
                 {product.long_description}
               </p>
             )}
 
             {/* Benefits */}
             {benefits.length > 0 && (
-              <div className="grid grid-cols-2 gap-x-2 gap-y-1 mb-3">
+              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 mb-2">
                 {benefits.slice(0, 6).map((b, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Check className="w-4 h-4 text-primary shrink-0" />
+                  <div key={i} className="flex items-center gap-1.5 text-xs sm:text-sm text-muted-foreground">
+                    <Check className="w-3.5 h-3.5 text-primary shrink-0" />
                     <span className="line-clamp-1">
                       {b.replace(/^[-•✓✨]/g, '').trim()}
                     </span>
@@ -163,16 +163,17 @@ export function ProductCard({
             )}
 
             {/* Avaliações compactas - acima dos botões */}
-            <div className="mb-3">
+            <div className="mb-2">
               <ReviewsSummaryModal
                 productId={product.id}
                 tenantId={product.tenant_id ?? null}
+                compact
               />
             </div>
 
             <div className="flex items-center gap-3 mt-auto">
               <div className="flex-1">
-                  <ActionButtons />
+                <ActionButtons />
               </div>
 
               <Button
@@ -188,29 +189,31 @@ export function ProductCard({
 
           {/* Image */}
           <div
-            className="relative flex h-48 sm:h-52 lg:h-full lg:min-h-[260px] items-center justify-center overflow-hidden bg-muted/20 p-4 sm:p-5 order-1 lg:order-2 cursor-pointer"
+            className="relative flex items-center justify-center overflow-hidden bg-muted/20 p-3 order-1 lg:order-2 cursor-pointer"
             onClick={handleCardClick}
           >
-            {product.image_url ? (
-              <img
-                src={product.image_url}
-                alt={product.name}
-                className="w-full h-full object-contain object-center"
-              />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
-                <span className="text-4xl opacity-50">📦</span>
-              </div>
-            )}
+            <div className="relative h-36 sm:h-40 lg:h-[220px] w-full">
+              {product.image_url ? (
+                <img
+                  src={product.image_url}
+                  alt={product.name}
+                  className="w-full h-full object-contain object-center"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
+                  <span className="text-4xl opacity-50">📦</span>
+                </div>
+              )}
 
-            {product.has_gallery && (
-              <div className="absolute bottom-4 right-4 bg-black/70 text-white px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5">
-                <Images className="w-3.5 h-3.5" />
-                Ver galeria
-              </div>
-            )}
+              {product.has_gallery && (
+                <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1.5">
+                  <Images className="w-3.5 h-3.5" />
+                  Ver galeria
+                </div>
+              )}
 
-            <div className="absolute inset-0 bg-gradient-to-r from-card/80 via-transparent to-transparent lg:block hidden" />
+              <div className="absolute inset-0 bg-gradient-to-r from-card/80 via-transparent to-transparent lg:block hidden" />
+            </div>
           </div>
         </div>
       </div>

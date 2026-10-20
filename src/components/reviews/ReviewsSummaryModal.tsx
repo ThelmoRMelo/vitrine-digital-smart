@@ -12,11 +12,12 @@ interface Props {
   productId: string;
   tenantId?: string | null;
   className?: string;
+  compact?: boolean;
 }
 
 const PAGE_SIZE = 3;
 
-export function ReviewsSummaryModal({ productId, tenantId, className }: Props) {
+export function ReviewsSummaryModal({ productId, tenantId, className, compact = false }: Props) {
   const stats = useReviewStats(productId);
   const [open, setOpen] = useState(false);
   const [visible, setVisible] = useState(PAGE_SIZE);
@@ -40,14 +41,14 @@ export function ReviewsSummaryModal({ productId, tenantId, className }: Props) {
   return (
     <div className={cn('w-full', className)}>
       {/* Compact summary */}
-      <div className="glass-card rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+      <div className={`glass-card rounded-2xl ${compact ? 'p-2 flex flex-row flex-wrap items-center gap-x-2 gap-y-1' : 'p-4 flex flex-col sm:flex-row sm:items-center gap-4'}`}>
         <div className="flex items-center gap-3">
-          <div className="text-3xl font-bold gradient-text leading-none">
+          <div className={`${compact ? 'text-2xl' : 'text-3xl'} font-bold gradient-text leading-none`}>
             {stats.average ? stats.average.toFixed(1) : '—'}
           </div>
           <div className="flex flex-col">
-            <ReviewStars value={stats.average} size={16} />
-            <span className="text-xs text-muted-foreground mt-0.5">
+            <ReviewStars value={stats.average} size={compact ? 14 : 16} />
+            <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground mt-0.5`}>
               {stats.total} {stats.total === 1 ? 'avaliação' : 'avaliações'}
             </span>
           </div>
@@ -75,17 +76,18 @@ export function ReviewsSummaryModal({ productId, tenantId, className }: Props) {
           </div>
         )}
 
-        <div className="flex gap-2 sm:flex-col sm:w-auto">
+        <div className={`flex gap-1.5 ${compact ? 'w-full sm:w-auto' : 'sm:flex-col sm:w-auto'}`}>
           <Button
             variant="outline"
             size="sm"
-            className="gap-2 flex-1 sm:flex-none"
+            className={`${compact ? 'gap-1 flex-1 px-2' : 'gap-2 flex-1 sm:flex-none'}`}
+            aria-label={compact ? 'Ver avaliações' : undefined}
             onClick={() => setOpen(true)}
           >
             <MessageSquareText className="w-4 h-4" />
-            Ver avaliações
+            {compact ? 'Avaliações' : 'Ver avaliações'}
           </Button>
-          <ReviewForm productId={productId} tenantId={tenantId} onSubmitted={refetch} />
+          <ReviewForm productId={productId} tenantId={tenantId} onSubmitted={refetch} compact={compact} />
         </div>
       </div>
 

@@ -42,9 +42,9 @@ export function ProductSection({
   if (products.length === 0 && heroProducts.length === 0) return null;
 
   return (
-    <section className={layout === 'featured' ? 'py-5 md:py-6' : 'py-8'}>
+    <section className={layout === 'featured' ? 'py-3 md:py-4' : 'py-8'}>
       {/* Section header */}
-      <div className={`flex items-center justify-between ${layout === 'featured' ? 'mb-3' : 'mb-6'}`}>
+      <div className={`flex items-center justify-between ${layout === 'featured' ? 'mb-2' : 'mb-6'}`}>
         <h2 
           className="text-2xl md:text-3xl font-bold"
           style={{ fontFamily: `'${theme.fonts.heading}', sans-serif` }}
@@ -66,7 +66,7 @@ export function ProductSection({
 
       {/* Products */}
       {layout === 'featured' ? (
-        <div className="space-y-4">
+        <div className="space-y-2">
           {heroProducts.length > 0 ? (
             <HeroCarousel
               products={heroProducts}
@@ -88,7 +88,7 @@ export function ProductSection({
 
           {(heroProducts.length > 0 ? products.length > 0 : products.length > 1) && (
             <div
-              className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-4 -mx-4 px-4"
+              className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 -mx-4 px-4"
               style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}
             >
               {(heroProducts.length > 0 ? products : products.slice(1)).map((product) => (

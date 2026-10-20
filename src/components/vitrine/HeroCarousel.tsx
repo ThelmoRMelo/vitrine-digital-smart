@@ -99,14 +99,14 @@ export function HeroCarousel({
         onMouseLeave={onPointerUp}
       >
         <div
-          className="flex items-stretch"
+          className="flex"
           style={{
             transform: `translateX(calc(-${index * 100}% + ${dragDelta}px))`,
             transition: startX.current === null ? 'transform 400ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
           }}
         >
           {products.map((product, i) => (
-            <div key={product.id} className="flex w-full shrink-0 px-0.5">
+            <div key={product.id} className="w-full shrink-0 self-start px-0.5">
               <ProductCard
                 product={product}
                 theme={theme}
@@ -144,7 +144,7 @@ export function HeroCarousel({
             <ChevronRight className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center justify-center gap-2 mt-3">
+          <div className="flex items-center justify-center gap-2 mt-2">
             {products.map((p, i) => (
               <button
                 key={p.id}
