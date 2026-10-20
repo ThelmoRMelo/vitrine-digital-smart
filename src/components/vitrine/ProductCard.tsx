@@ -192,7 +192,7 @@ export function ProductCard({
             className="relative flex items-center justify-center overflow-hidden bg-muted/20 p-1 order-1 lg:order-2 cursor-pointer"
             onClick={handleCardClick}
           >
-            <div className="relative h-36 sm:h-40 lg:h-[220px] w-full">
+            <div className="relative h-36 sm:h-40 w-full lg:absolute lg:inset-1 lg:h-auto lg:w-auto">
               {product.image_url ? (
                 <img
                   src={product.image_url}
