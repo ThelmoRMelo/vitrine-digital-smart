@@ -46,7 +46,7 @@ export function useProductImageUpload() {
       }
       if (mediaType === 'video') {
         if (file.size > MAX_VIDEO_FILE_BYTES) {
-          toast.error('Vídeo muito grande. O limite é 20 MB por arquivo.');
+          toast.error('Vídeo muito grande. O limite é 50 MB por arquivo.');
           return null;
         }
         if ((file.type && !allowedTypes.includes(file.type)) || !(await validateVideoFile(file))) {
@@ -87,7 +87,7 @@ export function useProductImageUpload() {
           return null;
         }
         if (signedUpload?.error === 'video_too_large') {
-          toast.error('Vídeo muito grande. O limite é 20 MB por arquivo.');
+          toast.error('Vídeo muito grande. O limite é 50 MB por arquivo.');
           return null;
         }
         if (!signedUpload?.path || !signedUpload.token) {

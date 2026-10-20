@@ -111,4 +111,4 @@ export async function validateVideoFile(file: File): Promise<boolean> {
   return isMp4 || isWebm;
 }
 
-export const MAX_VIDEO_FILE_BYTES = 20 * 1024 * 1024;
+export const MAX_VIDEO_FILE_BYTES = 50 * 1024 * 1024;

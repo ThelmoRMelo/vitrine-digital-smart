@@ -3,7 +3,7 @@ export function getVideoAuthorizationErrorMessage(status: number, code: string |
     return 'Sua sessão administrativa expirou. Entre novamente no painel para continuar.';
   }
   if (status === 413 || code === 'video_too_large') {
-    return 'Vídeo muito grande. O limite é 20 MB por arquivo.';
+    return 'Vídeo muito grande. O limite é 50 MB por arquivo.';
   }
   if (status === 403 || code === 'video_upload_forbidden') {
     return 'O acesso ao armazenamento de vídeos foi recusado. A sessão continua ativa; verifique as permissões do bucket.';
@@ -21,7 +21,7 @@ export function getVideoStorageErrorMessage(statusCode: string | undefined, mess
   const status = Number(statusCode);
   const normalizedMessage = message?.toLowerCase() ?? '';
   if (status === 413 || /file size|too large|exceed.*limit/.test(normalizedMessage)) {
-    return 'O Storage recusou o vídeo por exceder o limite de 20 MB.';
+    return 'O Storage recusou o vídeo por exceder o limite de 50 MB.';
   }
   if (status === 401) {
     return 'A autorização temporária do upload expirou. Tente enviar o vídeo novamente.';

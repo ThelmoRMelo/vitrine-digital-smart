@@ -163,7 +163,7 @@ export function ProductGalleryUpload({ media, onMediaChange, maxItems = 5 }: Pro
         </button>
       )}
 
-      <p className="text-xs text-muted-foreground">Imagens e vídeos demonstrativos. Vídeos enviados têm limite de 20 MB por arquivo; links do YouTube não contam como upload. A capa do produto continua sendo uma imagem.</p>
+      <p className="text-xs text-muted-foreground">Imagens e vídeos demonstrativos. Vídeos enviados têm limite de 50 MB por arquivo; links do YouTube não contam como upload. A capa do produto continua sendo uma imagem.</p>
     </div>
   );
 }

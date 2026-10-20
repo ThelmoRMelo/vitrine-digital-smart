@@ -7,7 +7,7 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const ITERATIONS = 310_000;
 const SESSION_DAYS = 30;
-const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const enc = new TextEncoder();
 
 const b64u = (buf: ArrayBuffer | Uint8Array) => {
