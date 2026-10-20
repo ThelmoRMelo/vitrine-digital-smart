@@ -9,23 +9,28 @@ WHERE media_type IS NULL;
 ALTER TABLE public.product_images
   DROP CONSTRAINT IF EXISTS product_images_media_type_check;
 
+-- Mantém compatibilidade com registros criados pela versão intermediária.
+UPDATE public.product_images
+SET media_type = 'video_upload'
+WHERE media_type = 'video';
+
 ALTER TABLE public.product_images
   ADD CONSTRAINT product_images_media_type_check
-  CHECK (media_type IN ('image', 'video'));
+  CHECK (media_type IN ('image', 'video_upload', 'youtube'));
 
--- Bucket separado: o limite de 20 MB vale somente para vídeos e não amplia o
+-- Bucket separado: o limite de 50 MB vale somente para vídeos enviados e não amplia o
 -- limite de upload de imagens do bucket product-images.
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'product-videos',
   'product-videos',
   true,
-  20971520,
+  52428800,
   ARRAY['video/mp4', 'video/webm']::text[]
 )
 ON CONFLICT (id) DO UPDATE
 SET public = true,
-    file_size_limit = 20971520,
+    file_size_limit = 52428800,
     allowed_mime_types = ARRAY['video/mp4', 'video/webm']::text[];
 
 -- Escrita restrita à pasta da conta autenticada. Vídeos enviados sem sessão

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, ZoomIn, Film } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import type { ProductGalleryMedia } from '@/lib/product-media';
+import { getYouTubeEmbedUrl, type ProductGalleryMedia } from '@/lib/product-media';
 
 interface ProductGalleryViewerProps {
   coverImage: string | null;
@@ -147,7 +147,24 @@ export function ProductGalleryViewer({
             </button>
           )}
 
-          {allMedia[currentIndex]?.mediaType === 'video' ? (
+          {allMedia[currentIndex]?.mediaType === 'youtube' ? (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-4">
+              {getYouTubeEmbedUrl(allMedia[currentIndex].url) ? (
+                <iframe
+                  src={getYouTubeEmbedUrl(allMedia[currentIndex].url) ?? undefined}
+                  title={`${productName} - vídeo do YouTube ${currentIndex + 1}`}
+                  className="aspect-video w-full max-w-5xl rounded-lg bg-black"
+                  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                  loading="lazy"
+                />
+              ) : (
+                <p className="max-w-md text-center text-sm text-white">Este link do YouTube não é válido.</p>
+              )}
+              <p className="max-w-2xl text-center text-xs text-white/70">O vídeo é reproduzido aqui na galeria. Se o YouTube informar que está indisponível, ele pode ter sido removido, estar privado ou não permitir incorporação.</p>
+            </div>
+          ) : allMedia[currentIndex]?.mediaType === 'video_upload' ? (
             <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-4">
               {videoError ? (
                 <p className="max-w-md text-center text-sm text-white">Não foi possível reproduzir este vídeo. Verifique o formato e o endereço do arquivo.</p>
@@ -188,8 +205,8 @@ export function ProductGalleryViewer({
                     : 'border-transparent opacity-60 hover:opacity-100'
                 }`}
               >
-                {item.mediaType === 'video' ? (
-                  <span className="flex h-full w-full items-center justify-center bg-muted text-white" aria-label={`Vídeo ${index + 1}`}><Film className="h-5 w-5" /></span>
+                {item.mediaType !== 'image' ? (
+                  <span className="flex h-full w-full items-center justify-center bg-muted text-white" aria-label={`${item.mediaType === 'youtube' ? 'YouTube' : 'Vídeo'} ${index + 1}`}><Film className="h-5 w-5" /></span>
                 ) : (
                   <img src={item.url} alt={`Thumbnail ${index + 1}`} className="h-full w-full object-cover" />
                 )}
@@ -239,8 +256,8 @@ export function ProductGalleryPreview({
         onClick={() => onOpenGallery(0)}
         className="w-full aspect-video rounded-xl overflow-hidden bg-muted relative group"
       >
-        {primaryMedia.mediaType === 'video' ? (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"><Film className="h-8 w-8" /><span className="text-xs">Vídeo demonstrativo</span></div>
+        {primaryMedia.mediaType !== 'image' ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"><Film className="h-8 w-8" /><span className="text-xs">{primaryMedia.mediaType === 'youtube' ? 'Vídeo do YouTube' : 'Vídeo demonstrativo'}</span></div>
         ) : (
           <img src={primaryMedia.url} alt={productName} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
         )}
@@ -270,7 +287,7 @@ export function ProductGalleryPreview({
               onClick={() => onOpenGallery(index + 1)}
               className="flex-1 aspect-square rounded-lg overflow-hidden bg-muted hover:opacity-80 transition-opacity relative"
             >
-                {item.mediaType === 'video' ? (
+                {item.mediaType !== 'image' ? (
                   <span className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground"><Film className="h-5 w-5" /></span>
                 ) : (
                   <img src={item.url} alt={`${productName} - mídia ${index + 2}`} className="h-full w-full object-cover" />

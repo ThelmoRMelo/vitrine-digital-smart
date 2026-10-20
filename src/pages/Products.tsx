@@ -14,7 +14,7 @@ import { useProductImageUpload } from '@/hooks/useProductImageUpload';
 import { useProductGallery } from '@/hooks/useProductGallery';
 import { ProductGalleryUpload } from '@/components/ProductGalleryUpload';
 import type { ProductGalleryMedia } from '@/lib/product-media';
-import { insertProductGalleryRows } from '@/lib/product-gallery-storage';
+import { insertProductGalleryRows, removeProductVideoObject } from '@/lib/product-gallery-storage';
 import { ProductImportPanel } from '@/components/products/ProductImportPanel';
 import type { ImportedProductData, ImportedReview } from '@/hooks/useProductImport';
 import { toast } from 'sonner';
@@ -231,7 +231,7 @@ export default function Products() {
   const closeForm = (keepUploadedVideos = false) => {
     if (!keepUploadedVideos) {
       for (const media of form.galleryMedia) {
-        if (media.mediaType === 'video' && media.temporaryUpload) {
+        if (media.mediaType === 'video_upload' && media.temporaryUpload) {
           void removeProductVideoObject(media.url).then(ok => {
             if (!ok) console.warn('[Products] Vídeo temporário não pôde ser removido do Storage ao cancelar.');
           });
@@ -440,7 +440,7 @@ export default function Products() {
               <h3 className="font-semibold text-lg">
                 {formMode === 'edit' ? 'Editar produto' : 'Novo produto'}
               </h3>
-              <button onClick={closeForm} className="p-2 hover:bg-muted rounded-lg">
+              <button onClick={() => closeForm()} className="p-2 hover:bg-muted rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -750,7 +750,7 @@ export default function Products() {
 
             {/* Actions */}
             <div className="flex gap-3 pt-2">
-              <Button variant="glass" onClick={closeForm} className="flex-1" disabled={saving}>
+              <Button variant="glass" onClick={() => closeForm()} className="flex-1" disabled={saving}>
                 Cancelar
               </Button>
               <Button variant="gradient" onClick={handleSave} className="flex-1" disabled={saving || (formMode === 'edit' && galleryLoading)}>

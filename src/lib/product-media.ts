@@ -1,4 +1,4 @@
-export type ProductMediaType = 'image' | 'video';
+export type ProductMediaType = 'image' | 'video_upload' | 'youtube';
 
 export interface ProductGalleryMedia {
   id?: string;
@@ -9,7 +9,43 @@ export interface ProductGalleryMedia {
 }
 
 export function normalizeProductMediaType(value: string | null | undefined): ProductMediaType {
-  return value === 'video' ? 'video' : 'image';
+  if (value === 'youtube') return 'youtube';
+  if (value === 'video' || value === 'video_upload') return 'video_upload';
+  return 'image';
+}
+
+const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+export function parseYouTubeVideoUrl(value: string): { videoId: string; canonicalUrl: string } | null {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return null;
+  }
+
+  const host = url.hostname.toLowerCase();
+  const allowedHosts = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'www.youtu.be']);
+  if (url.protocol !== 'https:' || !allowedHosts.has(host) || url.username || url.password) return null;
+
+  let videoId: string | null = null;
+  if (host.endsWith('youtu.be')) {
+    videoId = url.pathname.split('/').filter(Boolean)[0] ?? null;
+  } else if (url.pathname === '/watch') {
+    const videoIds = url.searchParams.getAll('v');
+    videoId = videoIds.length === 1 ? videoIds[0] : null;
+  } else {
+    const match = url.pathname.match(/^\/(?:embed|live|shorts)\/([^/?#]+)/);
+    videoId = match?.[1] ?? null;
+  }
+
+  if (!videoId || !YOUTUBE_VIDEO_ID.test(videoId)) return null;
+  return { videoId, canonicalUrl: `https://www.youtube.com/watch?v=${videoId}` };
+}
+
+export function getYouTubeEmbedUrl(value: string): string | null {
+  const parsed = parseYouTubeVideoUrl(value);
+  return parsed ? `https://www.youtube-nocookie.com/embed/${parsed.videoId}?rel=0&hl=pt-BR` : null;
 }
 
 export type VideoUrlValidation =
@@ -75,4 +111,4 @@ export async function validateVideoFile(file: File): Promise<boolean> {
   return isMp4 || isWebm;
 }
 
-export const MAX_VIDEO_FILE_BYTES = 20 * 1024 * 1024;
+export const MAX_VIDEO_FILE_BYTES = 50 * 1024 * 1024;

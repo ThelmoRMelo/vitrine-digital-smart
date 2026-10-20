@@ -181,7 +181,7 @@ export function useProductGallery(productId: string | null) {
         toast.error('Não foi possível verificar a galeria atual.');
         return false;
       }
-      if (!supportsMediaType && mediaItems.some(media => media.mediaType === 'video')) {
+      if (!supportsMediaType && mediaItems.some(media => media.mediaType !== 'image')) {
         toast.error('A migração da galeria multimídia precisa ser aplicada antes de salvar vídeos.');
         return false;
       }
@@ -226,7 +226,7 @@ export function useProductGallery(productId: string | null) {
 
       const retainedUrls = new Set(mediaItems.map(media => media.url));
       for (const oldMedia of existingRows || []) {
-        if (oldMedia.media_type === 'video' && !retainedUrls.has(oldMedia.image_url)) {
+        if ((oldMedia.media_type === 'video' || oldMedia.media_type === 'video_upload') && !retainedUrls.has(oldMedia.image_url)) {
           const removed = await removeProductVideoObject(oldMedia.image_url);
           if (!removed) console.warn('[useProductGallery] O registro foi removido, mas o arquivo de vídeo não pôde ser excluído do Storage.');
         }

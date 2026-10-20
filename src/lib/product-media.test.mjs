@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_VIDEO_FILE_BYTES, normalizeProductMediaType, validateVideoFile, validateVideoUrl } from './product-media.ts';
+import { getYouTubeEmbedUrl, MAX_VIDEO_FILE_BYTES, normalizeProductMediaType, parseYouTubeVideoUrl, validateVideoFile, validateVideoUrl } from './product-media.ts';
 
 const originalFetch = globalThis.fetch;
 
@@ -25,6 +25,23 @@ test('rejects public HTTP, streaming services, incompatible formats, and unverif
   assert.deepEqual(await validateVideoUrl('https://cdn.example.test/demo.webm'), { valid: false, reason: 'unverified' });
 });
 
+test('validates common YouTube sharing links and builds a fixed privacy-enhanced embed URL', () => {
+  const expected = { videoId: 'dQw4w9WgXcQ', canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' };
+  for (const url of [
+    'https://www.youtube.com/watch?v=dQw4w9WgXcQ&feature=share',
+    'https://youtu.be/dQw4w9WgXcQ?t=12',
+    'https://youtube.com/shorts/dQw4w9WgXcQ',
+    'https://www.youtube.com/live/dQw4w9WgXcQ?si=share',
+    'https://youtube.com/embed/dQw4w9WgXcQ',
+  ]) assert.deepEqual(parseYouTubeVideoUrl(url), expected);
+
+  assert.equal(getYouTubeEmbedUrl('https://youtu.be/dQw4w9WgXcQ'), 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&hl=pt-BR');
+  assert.equal(parseYouTubeVideoUrl('https://youtube.com.attacker.test/watch?v=dQw4w9WgXcQ'), null);
+  assert.equal(parseYouTubeVideoUrl('http://youtube.com/watch?v=dQw4w9WgXcQ'), null);
+  assert.equal(parseYouTubeVideoUrl('https://youtube.com/watch?v=short'), null);
+  assert.equal(parseYouTubeVideoUrl('https://youtube.com/watch?v=dQw4w9WgXcQ&v=attacker'), null);
+});
+
 test('validates MP4 and WebM by file contents, not only by extension', async () => {
   const mp4Bytes = new Uint8Array(16);
   mp4Bytes.set([0x66, 0x74, 0x79, 0x70], 4);
@@ -37,13 +54,15 @@ test('validates MP4 and WebM by file contents, not only by extension', async () 
   const overLimit = { ...atLimit, size: MAX_VIDEO_FILE_BYTES + 1 };
   assert.equal(await validateVideoFile(atLimit), true);
   assert.equal(await validateVideoFile(overLimit), false);
-  assert.equal(MAX_VIDEO_FILE_BYTES, 20 * 1024 * 1024);
+  assert.equal(MAX_VIDEO_FILE_BYTES, 50 * 1024 * 1024);
 });
 
 test('treats legacy records without media_type as images', () => {
   assert.equal(normalizeProductMediaType(undefined), 'image');
   assert.equal(normalizeProductMediaType(null), 'image');
-  assert.equal(normalizeProductMediaType('video'), 'video');
+  assert.equal(normalizeProductMediaType('video'), 'video_upload');
+  assert.equal(normalizeProductMediaType('video_upload'), 'video_upload');
+  assert.equal(normalizeProductMediaType('youtube'), 'youtube');
   assert.equal(normalizeProductMediaType('unexpected'), 'image');
 });
 

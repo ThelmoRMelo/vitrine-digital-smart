@@ -3,7 +3,7 @@ import { X, Upload, Loader2, Plus, Image as ImageIcon, Film, Link2 } from 'lucid
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useProductImageUpload } from '@/hooks/useProductImageUpload';
-import { validateVideoUrl, type ProductGalleryMedia, type ProductMediaType } from '@/lib/product-media';
+import { parseYouTubeVideoUrl, validateVideoUrl, type ProductGalleryMedia, type ProductMediaType } from '@/lib/product-media';
 import { removeProductVideoObject } from '@/lib/product-gallery-storage';
 import { toast } from 'sonner';
 
@@ -17,7 +17,7 @@ function videoUrlError(reason: 'invalid' | 'insecure' | 'streaming' | 'unsupport
   switch (reason) {
     case 'invalid': return 'Informe uma URL válida.';
     case 'insecure': return 'Use uma URL HTTPS. HTTP só é aceito em localhost durante o desenvolvimento.';
-    case 'streaming': return 'Links do YouTube/Vimeo não são arquivos de vídeo e não são incorporados nesta galeria.';
+    case 'streaming': return 'Esse link não é um arquivo MP4/WebM. Para YouTube, use a opção “YouTube”.';
     case 'unsupported': return 'Não foi possível confirmar o formato. Use um link direto para arquivo .mp4 ou .webm.';
     case 'unverified': return 'O servidor não permitiu confirmar o formato do vídeo. Envie o arquivo MP4/WebM diretamente ou use uma URL que responda à verificação.';
   }
@@ -42,9 +42,9 @@ export function ProductGalleryUpload({ media, onMediaChange, maxItems = 5 }: Pro
 
     const added: ProductGalleryMedia[] = [];
     for (const file of files.slice(0, remaining)) {
-      const type: ProductMediaType = file.type.startsWith('video/') || /\.(mp4|webm)$/i.test(file.name) ? 'video' : 'image';
-      const url = type === 'video' ? await uploadVideo(file) : await uploadImage(file);
-      if (url) added.push({ url, mediaType: type, ...(type === 'video' ? { temporaryUpload: true } : {}) });
+      const type: ProductMediaType = file.type.startsWith('video/') || /\.(mp4|webm)$/i.test(file.name) ? 'video_upload' : 'image';
+      const url = type === 'video_upload' ? await uploadVideo(file) : await uploadImage(file);
+      if (url) added.push({ url, mediaType: type, ...(type === 'video_upload' ? { temporaryUpload: true } : {}) });
     }
     if (added.length) onMediaChange([...media, ...added]);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -57,7 +57,14 @@ export function ProductGalleryUpload({ media, onMediaChange, maxItems = 5 }: Pro
       return;
     }
 
-    if (urlMediaType === 'video') {
+    if (urlMediaType === 'youtube') {
+      const parsed = parseYouTubeVideoUrl(urlInput);
+      if (!parsed) {
+        toast.error('Cole um link válido do YouTube (watch, youtu.be, shorts ou live).');
+        return;
+      }
+      onMediaChange([...media, { url: parsed.canonicalUrl, mediaType: 'youtube' }]);
+    } else if (urlMediaType === 'video_upload') {
       setCheckingUrl(true);
       const validation = await validateVideoUrl(urlInput, import.meta.env.DEV);
       setCheckingUrl(false);
@@ -65,7 +72,7 @@ export function ProductGalleryUpload({ media, onMediaChange, maxItems = 5 }: Pro
         toast.error(videoUrlError(validation.reason));
         return;
       }
-      onMediaChange([...media, { url: validation.url, mediaType: 'video' }]);
+      onMediaChange([...media, { url: validation.url, mediaType: 'video_upload' }]);
     } else {
       try {
         const parsed = new URL(urlInput.trim());
@@ -86,7 +93,7 @@ export function ProductGalleryUpload({ media, onMediaChange, maxItems = 5 }: Pro
 
   const handleRemove = (index: number) => {
     const removed = media[index];
-    if (removed?.mediaType === 'video' && removed.temporaryUpload) {
+    if (removed?.mediaType === 'video_upload' && removed.temporaryUpload) {
       void removeProductVideoObject(removed.url).then(ok => {
         if (!ok) console.warn('[ProductGalleryUpload] O vídeo saiu da lista, mas o arquivo temporário não foi removido do Storage.');
       });
@@ -103,8 +110,11 @@ export function ProductGalleryUpload({ media, onMediaChange, maxItems = 5 }: Pro
             <Button type="button" variant="outline" size="sm" onClick={() => { setUrlMediaType('image'); setShowUrlInput(true); }}>
               <Link2 className="mr-1 h-3 w-3" /> URL de imagem
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => { setUrlMediaType('video'); setShowUrlInput(true); }}>
+            <Button type="button" variant="outline" size="sm" onClick={() => { setUrlMediaType('video_upload'); setShowUrlInput(true); }}>
               <Link2 className="mr-1 h-3 w-3" /> URL de vídeo
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => { setUrlMediaType('youtube'); setShowUrlInput(true); }}>
+              <Link2 className="mr-1 h-3 w-3" /> YouTube
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               {uploading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Upload className="mr-1 h-3 w-3" />}
@@ -117,11 +127,12 @@ export function ProductGalleryUpload({ media, onMediaChange, maxItems = 5 }: Pro
       {showUrlInput && (
         <div className="space-y-2">
           <div className="flex gap-2">
-            <Input value={urlInput} onChange={event => setUrlInput(event.target.value)} placeholder={urlMediaType === 'video' ? 'URL HTTPS direta para vídeo MP4/WebM' : 'Cole a URL HTTPS da imagem'} className="flex-1" disabled={checkingUrl} />
+            <Input value={urlInput} onChange={event => setUrlInput(event.target.value)} placeholder={urlMediaType === 'video_upload' ? 'URL HTTPS direta para vídeo MP4/WebM' : urlMediaType === 'youtube' ? 'Cole o link do vídeo do YouTube' : 'Cole a URL HTTPS da imagem'} className="flex-1" disabled={checkingUrl} />
             <Button type="button" size="sm" onClick={handleAddUrl} disabled={checkingUrl}>{checkingUrl ? 'Verificando…' : 'Adicionar'}</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => { setShowUrlInput(false); setUrlInput(''); }}><X className="h-4 w-4" /></Button>
           </div>
-          {urlMediaType === 'video' && <p className="text-xs text-muted-foreground">A URL será verificada por uma solicitação HEAD para confirmar Content-Type de vídeo MP4 ou WebM. Parâmetros são aceitos; links sem extensão também funcionam se o servidor informar o tipo correto.</p>}
+          {urlMediaType === 'video_upload' && <p className="text-xs text-muted-foreground">A URL será verificada por uma solicitação HEAD para confirmar Content-Type de vídeo MP4 ou WebM. Parâmetros são aceitos; links sem extensão também funcionam se o servidor informar o tipo correto.</p>}
+          {urlMediaType === 'youtube' && <p className="text-xs text-muted-foreground">O link do YouTube será validado e incorporado à galeria. O vídeo não será baixado nem enviado ao Supabase.</p>}
         </div>
       )}
 
@@ -133,15 +144,15 @@ export function ProductGalleryUpload({ media, onMediaChange, maxItems = 5 }: Pro
         <div className="grid grid-cols-3 gap-2">
           {media.map((item, index) => (
               <div key={item.id ?? `${item.url}-${index}`} className="group relative aspect-square overflow-hidden rounded-lg border-2 border-transparent bg-muted transition-colors hover:border-primary/50">
-              {item.mediaType === 'video' ? (
-                <div className="flex h-full flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"><Film className="h-9 w-9" /><span className="text-xs">Vídeo</span></div>
+              {item.mediaType !== 'image' ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"><Film className="h-9 w-9" /><span className="text-xs">{item.mediaType === 'youtube' ? 'YouTube' : 'Vídeo enviado'}</span></div>
               ) : (
                 <img src={item.url} alt={`Galeria ${index + 1}`} className="h-full w-full object-cover" onError={event => { event.currentTarget.src = '/placeholder.svg'; }} />
               )}
               <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                <button type="button" onClick={() => handleRemove(index)} aria-label={`Remover ${item.mediaType === 'video' ? 'vídeo' : 'imagem'} ${index + 1}`} className="rounded-full bg-destructive p-1.5 text-white hover:bg-destructive/80"><X className="h-4 w-4" /></button>
+                <button type="button" onClick={() => handleRemove(index)} aria-label={`Remover ${item.mediaType === 'image' ? 'imagem' : 'vídeo'} ${index + 1}`} className="rounded-full bg-destructive p-1.5 text-white hover:bg-destructive/80"><X className="h-4 w-4" /></button>
               </div>
-              <div className="absolute left-1 top-1 flex h-5 min-w-5 items-center justify-center gap-1 rounded-full bg-black/70 px-1.5 text-xs font-medium text-white">{item.mediaType === 'video' && <Film className="h-3 w-3" />}{index + 1}</div>
+              <div className="absolute left-1 top-1 flex h-5 min-w-5 items-center justify-center gap-1 rounded-full bg-black/70 px-1.5 text-xs font-medium text-white">{item.mediaType !== 'image' && <Film className="h-3 w-3" />}{index + 1}</div>
             </div>
           ))}
           {canAddMore && <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-muted-foreground/30 text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"><Plus className="h-6 w-6" /><span className="text-xs">Adicionar</span></button>}
@@ -152,7 +163,7 @@ export function ProductGalleryUpload({ media, onMediaChange, maxItems = 5 }: Pro
         </button>
       )}
 
-      <p className="text-xs text-muted-foreground">Imagens e vídeos demonstrativos. Vídeos enviados têm limite de 20 MB por arquivo; a capa do produto continua sendo uma imagem.</p>
+      <p className="text-xs text-muted-foreground">Imagens e vídeos demonstrativos. Vídeos enviados têm limite de 50 MB por arquivo; links do YouTube não contam como upload. A capa do produto continua sendo uma imagem.</p>
     </div>
   );
 }

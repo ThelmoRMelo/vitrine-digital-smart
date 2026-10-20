@@ -6,7 +6,7 @@ type GeneratedProductImageRow = Database['public']['Tables']['product_images']['
 type GeneratedProductImageInsert = Database['public']['Tables']['product_images']['Insert'];
 
 export type ProductMediaRow = GeneratedProductImageRow & {
-  media_type?: ProductMediaType | null;
+  media_type?: string | null;
 };
 
 export interface ProductMediaInsert extends GeneratedProductImageInsert {
