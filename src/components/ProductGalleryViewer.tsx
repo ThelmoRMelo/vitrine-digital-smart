@@ -1,12 +1,12 @@
 // ProductGalleryViewer.tsx - Galeria de imagens com swipe (mobile-first)
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { X, ChevronLeft, ChevronRight, ZoomIn, Film } from 'lucide-react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import type { ProductGalleryMedia } from '@/lib/product-media';
 
 interface ProductGalleryViewerProps {
-  coverImage: string;
-  galleryImages: string[];
+  coverImage: string | null;
+  galleryMedia: ProductGalleryMedia[];
   productName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -15,17 +15,33 @@ interface ProductGalleryViewerProps {
 
 export function ProductGalleryViewer({
   coverImage,
-  galleryImages,
+  galleryMedia,
   productName,
   open,
   onOpenChange,
   initialIndex = 0,
 }: ProductGalleryViewerProps) {
-  const allImages = [coverImage, ...galleryImages].filter(Boolean);
+  const allMedia: ProductGalleryMedia[] = [
+    ...(coverImage ? [{ url: coverImage, mediaType: 'image' as const }] : []),
+    ...galleryMedia,
+  ];
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoError, setVideoError] = useState(false);
+
+  useEffect(() => {
+    setVideoError(false);
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load();
+      }
+    };
+  }, [currentIndex, open]);
 
   // Reset to initial index when opening
   useEffect(() => {
@@ -53,7 +69,7 @@ export function ProductGalleryViewer({
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
     
-    if (isLeftSwipe && currentIndex < allImages.length - 1) {
+    if (isLeftSwipe && currentIndex < allMedia.length - 1) {
       setCurrentIndex(prev => prev + 1);
     }
     if (isRightSwipe && currentIndex > 0) {
@@ -62,10 +78,10 @@ export function ProductGalleryViewer({
   };
 
   const goTo = useCallback((index: number) => {
-    if (index >= 0 && index < allImages.length) {
+    if (index >= 0 && index < allMedia.length) {
       setCurrentIndex(index);
     }
-  }, [allImages.length]);
+  }, [allMedia.length]);
 
   const goNext = () => goTo(currentIndex + 1);
   const goPrev = () => goTo(currentIndex - 1);
@@ -84,14 +100,12 @@ export function ProductGalleryViewer({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, currentIndex, goTo, onOpenChange]);
 
-  if (allImages.length === 0) return null;
+  if (allMedia.length === 0) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-black/95 border-none">
-        <VisuallyHidden>
-          <DialogTitle>Galeria de imagens - {productName}</DialogTitle>
-        </VisuallyHidden>
+      <DialogContent aria-labelledby="product-gallery-dialog-title" className="max-w-[95vw] max-h-[95vh] p-0 bg-black/95 border-none">
+        <h2 id="product-gallery-dialog-title" className="sr-only">Galeria de imagens e vídeos - {productName}</h2>
 
         {/* Close button */}
         <button
@@ -103,7 +117,7 @@ export function ProductGalleryViewer({
 
         {/* Image counter */}
         <div className="absolute top-4 left-4 z-50 px-3 py-1.5 bg-black/50 rounded-full text-white text-sm font-medium">
-          {currentIndex + 1} / {allImages.length}
+          {currentIndex + 1} / {allMedia.length}
         </div>
 
         {/* Main image container */}
@@ -124,7 +138,7 @@ export function ProductGalleryViewer({
             </button>
           )}
 
-          {currentIndex < allImages.length - 1 && (
+          {currentIndex < allMedia.length - 1 && (
             <button
               onClick={goNext}
               className="absolute right-4 z-40 p-3 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors hidden sm:block"
@@ -133,19 +147,38 @@ export function ProductGalleryViewer({
             </button>
           )}
 
-          {/* Image */}
-          <img
-            src={allImages[currentIndex]}
-            alt={`${productName} - Imagem ${currentIndex + 1}`}
-            className="max-w-full max-h-full object-contain select-none"
-            draggable={false}
-          />
+          {allMedia[currentIndex]?.mediaType === 'video' ? (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-4">
+              {videoError ? (
+                <p className="max-w-md text-center text-sm text-white">Não foi possível reproduzir este vídeo. Verifique o formato e o endereço do arquivo.</p>
+              ) : (
+                <video
+                  key={allMedia[currentIndex].url}
+                  ref={videoRef}
+                  src={allMedia[currentIndex].url}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  onError={() => setVideoError(true)}
+                  className="max-h-full max-w-full"
+                  aria-label={`${productName} - vídeo demonstrativo ${currentIndex + 1}`}
+                />
+              )}
+            </div>
+          ) : (
+            <img
+              src={allMedia[currentIndex]?.url}
+              alt={`${productName} - Imagem ${currentIndex + 1}`}
+              className="max-h-full max-w-full select-none object-contain"
+              draggable={false}
+            />
+          )}
         </div>
 
         {/* Thumbnails */}
-        {allImages.length > 1 && (
+        {allMedia.length > 1 && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 p-2 bg-black/50 rounded-full">
-            {allImages.map((img, index) => (
+            {allMedia.map((item, index) => (
               <button
                 key={index}
                 onClick={() => goTo(index)}
@@ -155,18 +188,18 @@ export function ProductGalleryViewer({
                     : 'border-transparent opacity-60 hover:opacity-100'
                 }`}
               >
-                <img
-                  src={img}
-                  alt={`Thumbnail ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
+                {item.mediaType === 'video' ? (
+                  <span className="flex h-full w-full items-center justify-center bg-muted text-white" aria-label={`Vídeo ${index + 1}`}><Film className="h-5 w-5" /></span>
+                ) : (
+                  <img src={item.url} alt={`Thumbnail ${index + 1}`} className="h-full w-full object-cover" />
+                )}
               </button>
             ))}
           </div>
         )}
 
         {/* Swipe hint - mobile only */}
-        {allImages.length > 1 && (
+        {allMedia.length > 1 && (
           <div className="absolute bottom-20 left-1/2 -translate-x-1/2 text-white/50 text-xs sm:hidden">
             Deslize para navegar
           </div>
@@ -178,22 +211,26 @@ export function ProductGalleryViewer({
 
 // Mini gallery preview for product cards
 interface ProductGalleryPreviewProps {
-  coverImage: string;
-  galleryImages: string[];
+  coverImage: string | null;
+  galleryMedia: ProductGalleryMedia[];
   productName: string;
   onOpenGallery: (index: number) => void;
 }
 
 export function ProductGalleryPreview({
   coverImage,
-  galleryImages,
+  galleryMedia,
   productName,
   onOpenGallery,
 }: ProductGalleryPreviewProps) {
-  const allImages = [coverImage, ...galleryImages].filter(Boolean);
-  const hasGallery = galleryImages.length > 0;
+  const allMedia: ProductGalleryMedia[] = [
+    ...(coverImage ? [{ url: coverImage, mediaType: 'image' as const }] : []),
+    ...galleryMedia,
+  ];
+  const hasGallery = allMedia.length > 1;
+  const primaryMedia = allMedia[0];
 
-  if (!coverImage) return null;
+  if (!primaryMedia) return null;
 
   return (
     <div className="relative">
@@ -202,11 +239,11 @@ export function ProductGalleryPreview({
         onClick={() => onOpenGallery(0)}
         className="w-full aspect-video rounded-xl overflow-hidden bg-muted relative group"
       >
-        <img
-          src={coverImage}
-          alt={productName}
-          className="w-full h-full object-cover transition-transform group-hover:scale-105"
-        />
+        {primaryMedia.mediaType === 'video' ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"><Film className="h-8 w-8" /><span className="text-xs">Vídeo demonstrativo</span></div>
+        ) : (
+          <img src={primaryMedia.url} alt={productName} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+        )}
         
         {/* Zoom hint */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -219,7 +256,7 @@ export function ProductGalleryPreview({
         {hasGallery && (
           <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/70 rounded-full text-white text-xs font-medium flex items-center gap-1">
             <ZoomIn className="w-3 h-3" />
-            +{galleryImages.length}
+            +{allMedia.length - 1}
           </div>
         )}
       </button>
@@ -227,20 +264,20 @@ export function ProductGalleryPreview({
       {/* Gallery thumbnails preview */}
       {hasGallery && (
         <div className="flex gap-1 mt-2">
-          {galleryImages.slice(0, 4).map((img, index) => (
+          {allMedia.slice(1, 5).map((item, index) => (
             <button
               key={index}
               onClick={() => onOpenGallery(index + 1)}
               className="flex-1 aspect-square rounded-lg overflow-hidden bg-muted hover:opacity-80 transition-opacity relative"
             >
-              <img
-                src={img}
-                alt={`${productName} - ${index + 2}`}
-                className="w-full h-full object-cover"
-              />
-              {index === 3 && galleryImages.length > 4 && (
+                {item.mediaType === 'video' ? (
+                  <span className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground"><Film className="h-5 w-5" /></span>
+                ) : (
+                  <img src={item.url} alt={`${productName} - mídia ${index + 2}`} className="h-full w-full object-cover" />
+                )}
+              {index === 3 && allMedia.length > 5 && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-medium">
-                  +{galleryImages.length - 4}
+                  +{allMedia.length - 5}
                 </div>
               )}
             </button>

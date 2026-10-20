@@ -13,6 +13,8 @@ import { useNiches } from '@/hooks/useNiches';
 import { useProductImageUpload } from '@/hooks/useProductImageUpload';
 import { useProductGallery } from '@/hooks/useProductGallery';
 import { ProductGalleryUpload } from '@/components/ProductGalleryUpload';
+import type { ProductGalleryMedia } from '@/lib/product-media';
+import { insertProductGalleryRows } from '@/lib/product-gallery-storage';
 import { ProductImportPanel } from '@/components/products/ProductImportPanel';
 import type { ImportedProductData, ImportedReview } from '@/hooks/useProductImport';
 import { toast } from 'sonner';
@@ -40,7 +42,7 @@ interface ProductForm {
   imagemUrl: string;
   linkPagamento: string;
   ativo: boolean;
-  galleryImages: string[];
+  galleryMedia: ProductGalleryMedia[];
   sourcePlatform: string | null;
   externalProductId: string | null;
   sourceUrl: string | null;
@@ -61,7 +63,7 @@ const emptyForm: ProductForm = {
   imagemUrl: '',
   linkPagamento: '',
   ativo: true,
-  galleryImages: [],
+  galleryMedia: [],
   sourcePlatform: null,
   externalProductId: null,
   sourceUrl: null,
@@ -155,17 +157,17 @@ export default function Products() {
   };
 
   // Hook para galeria de imagens
-  const { images: galleryImages, saveGallery, fetchImages } = useProductGallery(editingId);
+  const { images: galleryImages, loading: galleryLoading, saveGallery, fetchImages } = useProductGallery(editingId);
 
   // Carregar imagens da galeria quando editar produto
   useEffect(() => {
-    if (formMode === 'edit' && editingId && galleryImages.length > 0) {
+    if (formMode === 'edit' && editingId && !saving && !galleryLoading) {
       setForm(prev => ({
         ...prev,
-        galleryImages: galleryImages.map(img => img.imageUrl),
+        galleryMedia: galleryImages.map(({ id, url, mediaType }) => ({ id, url, mediaType })),
       }));
     }
-  }, [formMode, editingId, galleryImages]);
+  }, [formMode, editingId, galleryImages, saving, galleryLoading]);
 
   const openAddForm = () => {
     setForm(emptyForm);
@@ -190,7 +192,7 @@ export default function Products() {
       imagemUrl: product.imagemUrl || '',
       linkPagamento: product.linkPagamento || '',
       ativo: product.ativo,
-      galleryImages: [], // Será carregado pelo useEffect
+      galleryMedia: [], // Será carregado pelo useEffect
       sourcePlatform: product.sourcePlatform ?? null,
       externalProductId: product.externalProductId ?? null,
       sourceUrl: product.sourceUrl ?? null,
@@ -216,7 +218,7 @@ export default function Products() {
       descricaoDetalhada: data.longDescription ?? prev.descricaoDetalhada,
       imagemUrl: data.coverImage ?? prev.imagemUrl,
       linkPagamento: affiliateUrl || prev.linkPagamento,
-      galleryImages: data.galleryImages.length > 0 ? data.galleryImages.slice(0, 5) : prev.galleryImages,
+      galleryMedia: data.galleryImages.length > 0 ? data.galleryImages.slice(0, 5).map(url => ({ url, mediaType: 'image' as const })) : prev.galleryMedia,
       sourcePlatform: data.platform,
       externalProductId: data.externalId,
       sourceUrl: data.sourceUrl,
@@ -226,7 +228,16 @@ export default function Products() {
     if (data.coverImage) setImagePreview(data.coverImage);
   };
 
-  const closeForm = () => {
+  const closeForm = (keepUploadedVideos = false) => {
+    if (!keepUploadedVideos) {
+      for (const media of form.galleryMedia) {
+        if (media.mediaType === 'video' && media.temporaryUpload) {
+          void removeProductVideoObject(media.url).then(ok => {
+            if (!ok) console.warn('[Products] Vídeo temporário não pôde ser removido do Storage ao cancelar.');
+          });
+        }
+      }
+    }
     setForm(emptyForm);
     setImagePreview('');
     setEditingId(null);
@@ -256,6 +267,10 @@ export default function Products() {
   };
 
   const handleSave = async () => {
+    if (formMode === 'edit' && galleryLoading) {
+      toast.info('Aguarde o carregamento da galeria antes de salvar o produto.');
+      return;
+    }
     if (!form.nome.trim()) {
       toast.error('Preencha o nome do produto');
       return;
@@ -287,7 +302,7 @@ export default function Products() {
       imagemUrl: form.imagemUrl.trim(),
       linkPagamento: form.linkPagamento.trim(),
       ativo: form.ativo,
-      hasGallery: form.galleryImages.length > 0,
+      hasGallery: form.galleryMedia.length > 0,
       isFeatured: editingId ? (products.find(p => p.id === editingId)?.isFeatured ?? false) : false,
       isHero: editingId ? (products.find(p => p.id === editingId)?.isHero ?? false) : false,
       showOnProducts: editingId ? (products.find(p => p.id === editingId)?.showOnProducts ?? true) : true,
@@ -300,6 +315,7 @@ export default function Products() {
 
     try {
       let savedProductId: string | null = null;
+      let gallerySaveFailed = false;
       
       if (formMode === 'edit' && editingId) {
         await updateProduct(editingId, productData);
@@ -307,29 +323,39 @@ export default function Products() {
         
         // Salvar galeria de imagens
         if (savedProductId) {
-          await saveGallery(form.galleryImages);
+          const gallerySaved = await saveGallery(form.galleryMedia);
+          if (!gallerySaved) {
+            gallerySaveFailed = true;
+            toast.error('Os dados do produto foram atualizados, mas a galeria não foi salva. Confira a migração da galeria multimídia.');
+          }
         }
-        
-        toast.success('Produto atualizado!');
+        if (!gallerySaveFailed) toast.success('Produto atualizado!');
       } else {
         const newProduct = await addProduct(productData);
         if (newProduct) {
           savedProductId = newProduct.id;
           
           // Salvar galeria para novo produto (precisamos atualizar o editingId temporariamente)
-          if (form.galleryImages.length > 0) {
+          if (form.galleryMedia.length > 0) {
             // Para novo produto, salvamos direto no banco
-            const { supabase } = await import('@/integrations/supabase/client');
-            const inserts = form.galleryImages.map((url, index) => ({
+            const inserts = form.galleryMedia.map((media, index) => ({
               product_id: savedProductId,
-              image_url: url,
+              image_url: media.url,
+              media_type: media.mediaType,
               display_order: index,
             }));
-            await supabase.from('product_images').insert(inserts);
-            await supabase.from('products').update({ has_gallery: true }).eq('id', savedProductId);
+            const { error: galleryError } = await insertProductGalleryRows(inserts);
+            if (galleryError) {
+              console.error('[Products] Erro ao salvar mídias da galeria:', galleryError);
+              toast.error('Produto salvo, mas a galeria não foi salva. Confira se a migração de vídeos foi aplicada.');
+              gallerySaveFailed = true;
+            } else {
+              const { supabase } = await import('@/integrations/supabase/client');
+              await supabase.from('products').update({ has_gallery: true }).eq('id', savedProductId);
+            }
           }
         }
-        toast.success('Produto salvo com sucesso!');
+        if (!gallerySaveFailed) toast.success('Produto salvo com sucesso!');
       }
 
       // Avaliações importadas: salvas como PENDENTES (nunca publicadas automaticamente)
@@ -342,7 +368,7 @@ export default function Products() {
         }
       }
 
-      closeForm();
+      if (!gallerySaveFailed || formMode === 'add') closeForm(!gallerySaveFailed);
     } catch (err) {
       console.error('Erro ao salvar:', err);
     } finally {
@@ -703,9 +729,9 @@ export default function Products() {
 
             {/* Galeria de imagens adicionais */}
             <ProductGalleryUpload
-              images={form.galleryImages}
-              onImagesChange={(images) => setForm(prev => ({ ...prev, galleryImages: images }))}
-              maxImages={5}
+              media={form.galleryMedia}
+              onMediaChange={(galleryMedia) => setForm(prev => ({ ...prev, galleryMedia }))}
+              maxItems={5}
             />
 
             {/* Produto ativo */}
@@ -727,7 +753,7 @@ export default function Products() {
               <Button variant="glass" onClick={closeForm} className="flex-1" disabled={saving}>
                 Cancelar
               </Button>
-              <Button variant="gradient" onClick={handleSave} className="flex-1" disabled={saving}>
+              <Button variant="gradient" onClick={handleSave} className="flex-1" disabled={saving || (formMode === 'edit' && galleryLoading)}>
                 {saving ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />

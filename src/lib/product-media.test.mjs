@@ -1,0 +1,52 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { MAX_VIDEO_FILE_BYTES, normalizeProductMediaType, validateVideoFile, validateVideoUrl } from './product-media.ts';
+
+const originalFetch = globalThis.fetch;
+
+test('accepts HTTPS video URLs confirmed by Content-Type, including query parameters', async () => {
+  globalThis.fetch = async () => new Response(null, { status: 200, headers: { 'content-type': 'video/mp4' } });
+  const result = await validateVideoUrl('https://cdn.example.test/demo.mp4?token=abc');
+  assert.deepEqual(result, { valid: true, url: 'https://cdn.example.test/demo.mp4?token=abc' });
+});
+
+test('accepts extensionless URLs only when the server confirms WebM', async () => {
+  globalThis.fetch = async () => new Response(null, { status: 200, headers: { 'content-type': 'video/webm' } });
+  const result = await validateVideoUrl('https://cdn.example.test/video?id=42');
+  assert.equal(result.valid, true);
+});
+
+test('rejects public HTTP, streaming services, incompatible formats, and unverified servers', async () => {
+  assert.deepEqual(await validateVideoUrl('http://cdn.example.test/demo.mp4'), { valid: false, reason: 'insecure' });
+  assert.deepEqual(await validateVideoUrl('https://youtube.com/watch?v=abc'), { valid: false, reason: 'streaming' });
+  globalThis.fetch = async () => new Response(null, { status: 200, headers: { 'content-type': 'text/html' } });
+  assert.deepEqual(await validateVideoUrl('https://cdn.example.test/demo.mp4'), { valid: false, reason: 'unsupported' });
+  globalThis.fetch = async () => { throw new TypeError('CORS blocked'); };
+  assert.deepEqual(await validateVideoUrl('https://cdn.example.test/demo.webm'), { valid: false, reason: 'unverified' });
+});
+
+test('validates MP4 and WebM by file contents, not only by extension', async () => {
+  const mp4Bytes = new Uint8Array(16);
+  mp4Bytes.set([0x66, 0x74, 0x79, 0x70], 4);
+  const webmBytes = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00]);
+  assert.equal(await validateVideoFile(new File([mp4Bytes], 'valid.mp4', { type: 'video/mp4' })), true);
+  assert.equal(await validateVideoFile(new File([webmBytes], 'valid.webm', { type: 'video/webm' })), true);
+  assert.equal(await validateVideoFile(new File([new Uint8Array(16)], 'fake.mp4', { type: 'video/mp4' })), false);
+  assert.equal(await validateVideoFile(new File([mp4Bytes], 'mismatch.webm', { type: 'video/mp4' })), false);
+  const atLimit = { name: 'limit.mp4', type: 'video/mp4', size: MAX_VIDEO_FILE_BYTES, slice: () => new Blob([mp4Bytes]) };
+  const overLimit = { ...atLimit, size: MAX_VIDEO_FILE_BYTES + 1 };
+  assert.equal(await validateVideoFile(atLimit), true);
+  assert.equal(await validateVideoFile(overLimit), false);
+  assert.equal(MAX_VIDEO_FILE_BYTES, 20 * 1024 * 1024);
+});
+
+test('treats legacy records without media_type as images', () => {
+  assert.equal(normalizeProductMediaType(undefined), 'image');
+  assert.equal(normalizeProductMediaType(null), 'image');
+  assert.equal(normalizeProductMediaType('video'), 'video');
+  assert.equal(normalizeProductMediaType('unexpected'), 'image');
+});
+
+test.after(() => {
+  globalThis.fetch = originalFetch;
+});

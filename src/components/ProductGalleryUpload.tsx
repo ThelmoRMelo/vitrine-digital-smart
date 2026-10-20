@@ -1,223 +1,158 @@
-// ProductGalleryUpload.tsx - Componente para upload de galeria de imagens
-import { useState, useRef } from 'react';
-import { X, Upload, Loader2, GripVertical, Plus, Image as ImageIcon } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { X, Upload, Loader2, Plus, Image as ImageIcon, Film, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useProductImageUpload } from '@/hooks/useProductImageUpload';
+import { validateVideoUrl, type ProductGalleryMedia, type ProductMediaType } from '@/lib/product-media';
+import { removeProductVideoObject } from '@/lib/product-gallery-storage';
 import { toast } from 'sonner';
 
 interface ProductGalleryUploadProps {
-  images: string[];
-  onImagesChange: (images: string[]) => void;
-  maxImages?: number;
+  media: ProductGalleryMedia[];
+  onMediaChange: (media: ProductGalleryMedia[]) => void;
+  maxItems?: number;
 }
 
-export function ProductGalleryUpload({ 
-  images, 
-  onImagesChange, 
-  maxImages = 5 
-}: ProductGalleryUploadProps) {
-  const { uploadImage, uploading } = useProductImageUpload();
+function videoUrlError(reason: 'invalid' | 'insecure' | 'streaming' | 'unsupported' | 'unverified'): string {
+  switch (reason) {
+    case 'invalid': return 'Informe uma URL válida.';
+    case 'insecure': return 'Use uma URL HTTPS. HTTP só é aceito em localhost durante o desenvolvimento.';
+    case 'streaming': return 'Links do YouTube/Vimeo não são arquivos de vídeo e não são incorporados nesta galeria.';
+    case 'unsupported': return 'Não foi possível confirmar o formato. Use um link direto para arquivo .mp4 ou .webm.';
+    case 'unverified': return 'O servidor não permitiu confirmar o formato do vídeo. Envie o arquivo MP4/WebM diretamente ou use uma URL que responda à verificação.';
+  }
+}
+
+export function ProductGalleryUpload({ media, onMediaChange, maxItems = 5 }: ProductGalleryUploadProps) {
+  const { uploadImage, uploadVideo, uploading } = useProductImageUpload();
   const [urlInput, setUrlInput] = useState('');
+  const [urlMediaType, setUrlMediaType] = useState<ProductMediaType>('image');
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const [checkingUrl, setCheckingUrl] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const canAddMore = media.length < maxItems;
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
     if (!files.length) return;
-
-    const remaining = maxImages - images.length;
-    const toUpload = files.slice(0, remaining);
-
+    const remaining = maxItems - media.length;
     if (files.length > remaining) {
-      toast.warning(`Limite de ${maxImages} imagens. ${files.length - remaining} imagem(ns) ignorada(s).`);
+      toast.warning(`Limite de ${maxItems} mídias. ${files.length - remaining} arquivo(s) ignorado(s).`);
     }
 
-    for (const file of toUpload) {
-      const url = await uploadImage(file);
-      if (url) {
-        onImagesChange([...images, url]);
-      }
+    const added: ProductGalleryMedia[] = [];
+    for (const file of files.slice(0, remaining)) {
+      const type: ProductMediaType = file.type.startsWith('video/') || /\.(mp4|webm)$/i.test(file.name) ? 'video' : 'image';
+      const url = type === 'video' ? await uploadVideo(file) : await uploadImage(file);
+      if (url) added.push({ url, mediaType: type, ...(type === 'video' ? { temporaryUpload: true } : {}) });
     }
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (added.length) onMediaChange([...media, ...added]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleAddUrl = () => {
+  const handleAddUrl = async () => {
     if (!urlInput.trim()) return;
-    
-    if (images.length >= maxImages) {
-      toast.error(`Máximo de ${maxImages} imagens`);
+    if (media.length >= maxItems) {
+      toast.error(`Máximo de ${maxItems} mídias`);
       return;
     }
 
-    onImagesChange([...images, urlInput.trim()]);
+    if (urlMediaType === 'video') {
+      setCheckingUrl(true);
+      const validation = await validateVideoUrl(urlInput, import.meta.env.DEV);
+      setCheckingUrl(false);
+      if (validation.valid === false) {
+        toast.error(videoUrlError(validation.reason));
+        return;
+      }
+      onMediaChange([...media, { url: validation.url, mediaType: 'video' }]);
+    } else {
+      try {
+        const parsed = new URL(urlInput.trim());
+        if ((parsed.protocol !== 'https:' && parsed.protocol !== 'http:') || parsed.username || parsed.password) {
+          toast.error('Use uma URL HTTP ou HTTPS válida para adicionar imagens.');
+          return;
+        }
+        onMediaChange([...media, { url: parsed.href, mediaType: 'image' }]);
+      } catch {
+        toast.error('Informe uma URL válida.');
+        return;
+      }
+    }
+
     setUrlInput('');
     setShowUrlInput(false);
   };
 
   const handleRemove = (index: number) => {
-    const newImages = images.filter((_, i) => i !== index);
-    onImagesChange(newImages);
+    const removed = media[index];
+    if (removed?.mediaType === 'video' && removed.temporaryUpload) {
+      void removeProductVideoObject(removed.url).then(ok => {
+        if (!ok) console.warn('[ProductGalleryUpload] O vídeo saiu da lista, mas o arquivo temporário não foi removido do Storage.');
+      });
+    }
+    onMediaChange(media.filter((_, itemIndex) => itemIndex !== index));
   };
-
-  const handleReorder = (fromIndex: number, toIndex: number) => {
-    const newImages = [...images];
-    const [removed] = newImages.splice(fromIndex, 1);
-    newImages.splice(toIndex, 0, removed);
-    onImagesChange(newImages);
-  };
-
-  const canAddMore = images.length < maxImages;
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <label className="text-sm text-muted-foreground">
-          Galeria de imagens ({images.length}/{maxImages})
-        </label>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="text-sm text-muted-foreground">Galeria de imagens e vídeos ({media.length}/{maxItems})</label>
         {canAddMore && !showUrlInput && (
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowUrlInput(true)}
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              URL
+            <Button type="button" variant="outline" size="sm" onClick={() => { setUrlMediaType('image'); setShowUrlInput(true); }}>
+              <Link2 className="mr-1 h-3 w-3" /> URL de imagem
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              ) : (
-                <Upload className="w-3 h-3 mr-1" />
-              )}
-              Upload
+            <Button type="button" variant="outline" size="sm" onClick={() => { setUrlMediaType('video'); setShowUrlInput(true); }}>
+              <Link2 className="mr-1 h-3 w-3" /> URL de vídeo
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              {uploading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Upload className="mr-1 h-3 w-3" />}
+              Enviar mídia
             </Button>
           </div>
         )}
       </div>
 
-      {/* URL Input */}
       {showUrlInput && (
-        <div className="flex gap-2">
-          <Input
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            placeholder="Cole a URL da imagem"
-            className="flex-1"
-          />
-          <Button type="button" size="sm" onClick={handleAddUrl}>
-            Adicionar
-          </Button>
-          <Button 
-            type="button" 
-            size="sm" 
-            variant="ghost" 
-            onClick={() => {
-              setShowUrlInput(false);
-              setUrlInput('');
-            }}
-          >
-            <X className="w-4 h-4" />
-          </Button>
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <Input value={urlInput} onChange={event => setUrlInput(event.target.value)} placeholder={urlMediaType === 'video' ? 'URL HTTPS direta para vídeo MP4/WebM' : 'Cole a URL HTTPS da imagem'} className="flex-1" disabled={checkingUrl} />
+            <Button type="button" size="sm" onClick={handleAddUrl} disabled={checkingUrl}>{checkingUrl ? 'Verificando…' : 'Adicionar'}</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { setShowUrlInput(false); setUrlInput(''); }}><X className="h-4 w-4" /></Button>
+          </div>
+          {urlMediaType === 'video' && <p className="text-xs text-muted-foreground">A URL será verificada por uma solicitação HEAD para confirmar Content-Type de vídeo MP4 ou WebM. Parâmetros são aceitos; links sem extensão também funcionam se o servidor informar o tipo correto.</p>}
         </div>
       )}
 
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/gif,image/webp"
-        multiple
-        onChange={handleFileSelect}
-        className="hidden"
-      />
+      <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,.mp4,.webm" multiple onChange={handleFileSelect} className="hidden" />
 
-      {/* Images Grid */}
-      {images.length > 0 ? (
+      {uploading && <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" />Enviando arquivo…</div>}
+
+      {media.length > 0 ? (
         <div className="grid grid-cols-3 gap-2">
-          {images.map((url, index) => (
-            <div
-              key={`${url}-${index}`}
-              className="relative group aspect-square rounded-lg overflow-hidden bg-muted border-2 border-transparent hover:border-primary/50 transition-colors"
-            >
-              <img
-                src={url}
-                alt={`Galeria ${index + 1}`}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.currentTarget.src = '/placeholder.svg';
-                }}
-              />
-              
-              {/* Overlay com ações */}
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleRemove(index)}
-                  className="p-1.5 bg-destructive rounded-full text-white hover:bg-destructive/80"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+          {media.map((item, index) => (
+              <div key={item.id ?? `${item.url}-${index}`} className="group relative aspect-square overflow-hidden rounded-lg border-2 border-transparent bg-muted transition-colors hover:border-primary/50">
+              {item.mediaType === 'video' ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"><Film className="h-9 w-9" /><span className="text-xs">Vídeo</span></div>
+              ) : (
+                <img src={item.url} alt={`Galeria ${index + 1}`} className="h-full w-full object-cover" onError={event => { event.currentTarget.src = '/placeholder.svg'; }} />
+              )}
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                <button type="button" onClick={() => handleRemove(index)} aria-label={`Remover ${item.mediaType === 'video' ? 'vídeo' : 'imagem'} ${index + 1}`} className="rounded-full bg-destructive p-1.5 text-white hover:bg-destructive/80"><X className="h-4 w-4" /></button>
               </div>
-
-              {/* Número da ordem */}
-              <div className="absolute top-1 left-1 w-5 h-5 bg-black/70 rounded-full flex items-center justify-center text-xs text-white font-medium">
-                {index + 1}
-              </div>
+              <div className="absolute left-1 top-1 flex h-5 min-w-5 items-center justify-center gap-1 rounded-full bg-black/70 px-1.5 text-xs font-medium text-white">{item.mediaType === 'video' && <Film className="h-3 w-3" />}{index + 1}</div>
             </div>
           ))}
-
-          {/* Add more placeholder */}
-          {canAddMore && (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="aspect-square rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
-            >
-              {uploading ? (
-                <Loader2 className="w-6 h-6 animate-spin" />
-              ) : (
-                <>
-                  <Plus className="w-6 h-6" />
-                  <span className="text-xs">Adicionar</span>
-                </>
-              )}
-            </button>
-          )}
+          {canAddMore && <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-muted-foreground/30 text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"><Plus className="h-6 w-6" /><span className="text-xs">Adicionar</span></button>}
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="w-full h-24 rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
-        >
-          {uploading ? (
-            <Loader2 className="w-8 h-8 animate-spin" />
-          ) : (
-            <>
-              <ImageIcon className="w-8 h-8 opacity-50" />
-              <span className="text-xs">Clique para adicionar imagens à galeria</span>
-            </>
-          )}
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex h-24 w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary">
+          {uploading ? <Loader2 className="h-8 w-8 animate-spin" /> : <><ImageIcon className="h-8 w-8 opacity-50" /><span className="text-xs">Clique para adicionar imagens ou vídeos</span></>}
         </button>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        📸 Imagens adicionais do produto. A imagem de capa é usada na vitrine e compartilhamento.
-      </p>
+      <p className="text-xs text-muted-foreground">Imagens e vídeos demonstrativos. Vídeos enviados têm limite de 20 MB por arquivo; a capa do produto continua sendo uma imagem.</p>
     </div>
   );
 }

@@ -17,6 +17,8 @@ import { ProductGalleryViewer, ProductGalleryPreview } from '@/components/Produc
 import { CatalogCards } from '@/components/chat/CatalogCards';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { currentProductWelcome } from '@/lib/product-welcome';
+import { normalizeProductMediaType, type ProductGalleryMedia } from '@/lib/product-media';
+import { fetchProductGalleryRows } from '@/lib/product-gallery-storage';
 //import { SpeakButton, playMessageSpeech, stopMessageSpeech, cleanTextForSpeech } from '@/components/chat/SpeakButton';
 import {
   SpeakButton,
@@ -181,7 +183,7 @@ export default function Chat() {
   const [tenantConfig, setTenantConfig] = useState<{ business_name?: string; business_category?: string } | null>(null);
   
   // Gallery state
-  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [galleryMedia, setGalleryMedia] = useState<ProductGalleryMedia[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
 
@@ -255,25 +257,29 @@ export default function Chat() {
     message => message.sender === 'bot' && message.categoria === 'Boas-vindas'
   )?.id;
 
-  // Buscar imagens da galeria quando o produto tem galeria
+  // Buscar imagens e vídeos da galeria do produto selecionado.
   useEffect(() => {
-    const fetchGalleryImages = async () => {
-      if (!contextProduct?.has_gallery || !productId) {
-        setGalleryImages([]);
+    let cancelled = false;
+    const fetchGalleryMedia = async () => {
+      setGalleryMedia([]);
+      if (!productId) {
         return;
       }
 
-      const { data } = await supabase
-        .from('product_images')
-        .select('image_url')
-        .eq('product_id', productId)
-        .order('display_order', { ascending: true });
+      const { data } = await fetchProductGalleryRows(productId);
 
-      setGalleryImages(data?.map(img => img.image_url) || []);
+      if (!cancelled) {
+        setGalleryMedia((data || []).map(item => ({
+          id: item.id,
+          url: item.image_url,
+          mediaType: normalizeProductMediaType(item.media_type),
+        })));
+      }
     };
 
-    fetchGalleryImages();
-  }, [contextProduct?.has_gallery, productId]);
+    void fetchGalleryMedia();
+    return () => { cancelled = true; };
+  }, [productId]);
 
   // Handler para abrir galeria
   const handleOpenGallery = (index: number) => {
@@ -636,11 +642,11 @@ await addMessage(
 {/* Chat area - estilo WhatsApp */}
       <main className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
         {/* Galeria de imagens do produto - exibida quando há galeria */}
-        {contextProduct?.image_url && (contextProduct.has_gallery && galleryImages.length > 0) && (
+        {contextProduct && galleryMedia.length > 0 && (
           <div className="mb-4">
             <ProductGalleryPreview
               coverImage={contextProduct.image_url}
-              galleryImages={galleryImages}
+              galleryMedia={galleryMedia}
               productName={contextProduct.name}
               onOpenGallery={handleOpenGallery}
             />
@@ -885,10 +891,10 @@ const catalogProducts = isFilteredCatalog
       </footer>
 
       {/* Modal da galeria de imagens */}
-      {contextProduct?.image_url && (
+      {contextProduct && (galleryMedia.length > 0 || contextProduct.image_url) && (
         <ProductGalleryViewer
           coverImage={contextProduct.image_url}
-          galleryImages={galleryImages}
+          galleryMedia={galleryMedia}
           productName={contextProduct.name}
           open={galleryOpen}
           onOpenChange={setGalleryOpen}
