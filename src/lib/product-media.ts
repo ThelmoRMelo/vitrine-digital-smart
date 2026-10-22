@@ -8,8 +8,8 @@ export interface ProductGalleryMedia {
   temporaryUpload?: boolean;
 }
 
-export function normalizeProductMediaType(value: string | null | undefined): ProductMediaType {
-  if (value === 'youtube') return 'youtube';
+export function normalizeProductMediaType(value: string | null | undefined, url?: string | null): ProductMediaType {
+  if (value === 'youtube' || (url && parseYouTubeVideoUrl(url))) return 'youtube';
   if (value === 'video' || value === 'video_upload') return 'video_upload';
   return 'image';
 }

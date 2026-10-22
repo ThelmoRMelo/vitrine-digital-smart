@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { getAdminToken } from '@/lib/adminAuth';
-import type { ProductMediaType } from '@/lib/product-media';
+import { normalizeProductMediaType, type ProductMediaType } from '@/lib/product-media';
 
 type GeneratedProductImageRow = Database['public']['Tables']['product_images']['Row'];
 type GeneratedProductImageInsert = Database['public']['Tables']['product_images']['Insert'];
@@ -18,6 +18,13 @@ function isMissingMediaTypeColumn(error: { code?: string; message?: string } | n
   return Boolean(error && /media_type/i.test(error.message ?? '') && /column|schema cache|could not find|does not exist|not found/i.test(error.message ?? ''));
 }
 
+function normalizeRows(rows: ProductMediaRow[] | null): ProductMediaRow[] | null {
+  return rows?.map(row => ({
+    ...row,
+    media_type: normalizeProductMediaType(row.media_type, row.image_url),
+  })) ?? null;
+}
+
 /**
  * The checked-in Supabase types predate the media_type migration. Keep that
  * generated file untouched and confine the schema bridge to this adapter.
@@ -30,7 +37,7 @@ export async function fetchProductGalleryRows(productId: string) {
     .order('display_order', { ascending: true });
 
   return {
-    data: result.data as ProductMediaRow[] | null,
+    data: normalizeRows(result.data as ProductMediaRow[] | null),
     error: result.error,
   };
 }
@@ -44,14 +51,14 @@ export async function fetchProductGalleryRowsForReplacement(productId: string) {
   if (isMissingMediaTypeColumn(result.error)) {
     const legacy = await supabase.from('product_images').select('*').eq('product_id', productId);
     return {
-      data: legacy.data as ProductMediaRow[] | null,
+      data: normalizeRows(legacy.data as ProductMediaRow[] | null),
       error: legacy.error,
       supportsMediaType: false,
     };
   }
 
   return {
-    data: result.data as ProductMediaRow[] | null,
+    data: normalizeRows(result.data as ProductMediaRow[] | null),
     error: result.error,
     supportsMediaType: true,
   };
@@ -62,7 +69,7 @@ export async function insertProductGalleryRows(rows: ProductMediaInsert[]) {
     .from('product_images')
     .insert(rows as unknown as GeneratedProductImageInsert[])
     .select('id');
-  if (!isMissingMediaTypeColumn(result.error) || rows.some(row => row.media_type !== 'image')) return result;
+  if (!isMissingMediaTypeColumn(result.error) || rows.some(row => row.media_type === 'video_upload')) return result;
 
   const legacyRows = rows.map(({ media_type: _mediaType, ...row }) => row);
   return supabase

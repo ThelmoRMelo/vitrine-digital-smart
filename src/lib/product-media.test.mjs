@@ -57,9 +57,13 @@ test('validates MP4 and WebM by file contents, not only by extension', async () 
   assert.equal(MAX_VIDEO_FILE_BYTES, 20 * 1024 * 1024);
 });
 
-test('treats legacy records without media_type as images', () => {
+test('derives YouTube media type from the URL when media_type is absent', () => {
   assert.equal(normalizeProductMediaType(undefined), 'image');
   assert.equal(normalizeProductMediaType(null), 'image');
+  assert.equal(normalizeProductMediaType(undefined, 'https://youtu.be/dQw4w9WgXcQ'), 'youtube');
+  assert.equal(normalizeProductMediaType(null, 'https://youtube.com/watch?v=dQw4w9WgXcQ'), 'youtube');
+  assert.equal(normalizeProductMediaType('image', 'https://www.youtube.com/shorts/dQw4w9WgXcQ'), 'youtube');
+  assert.equal(normalizeProductMediaType(undefined, 'https://attacker.test/watch?v=dQw4w9WgXcQ'), 'image');
   assert.equal(normalizeProductMediaType('video'), 'video_upload');
   assert.equal(normalizeProductMediaType('video_upload'), 'video_upload');
   assert.equal(normalizeProductMediaType('youtube'), 'youtube');
