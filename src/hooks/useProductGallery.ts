@@ -19,7 +19,7 @@ function toUIImage(img: SupabaseProductImage): ProductImage {
     id: img.id,
     productId: img.product_id,
     url: img.image_url,
-    mediaType: normalizeProductMediaType(img.media_type),
+    mediaType: normalizeProductMediaType(img.media_type, img.image_url),
     displayOrder: img.display_order,
     createdAt: img.created_at,
   };
@@ -181,8 +181,8 @@ export function useProductGallery(productId: string | null) {
         toast.error('Não foi possível verificar a galeria atual.');
         return false;
       }
-      if (!supportsMediaType && mediaItems.some(media => media.mediaType !== 'image')) {
-        toast.error('A migração da galeria multimídia precisa ser aplicada antes de salvar vídeos.');
+      if (!supportsMediaType && mediaItems.some(media => media.mediaType === 'video_upload')) {
+        toast.error('A migração da galeria multimídia precisa ser aplicada antes de salvar upload de arquivos de vídeo.');
         return false;
       }
 
