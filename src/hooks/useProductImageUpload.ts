@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getAdminToken } from '@/lib/adminAuth';
 import { MAX_VIDEO_FILE_BYTES, validateVideoFile } from '@/lib/product-media';
+import { convertImageToJpeg } from '@/lib/image-converter';
 import { getVideoAuthorizationErrorMessage, getVideoStorageErrorMessage, type VideoUploadDiagnostic } from '@/lib/video-upload-errors';
 
 const BUCKET_NAME = 'product-images';
@@ -45,10 +46,10 @@ export function useProductImageUpload() {
     setProgress(0);
     try {
       const allowedTypes = mediaType === 'image'
-        ? ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        ? ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif']
         : ['video/mp4', 'video/webm', 'application/octet-stream'];
       if (mediaType === 'image' && !allowedTypes.includes(file.type)) {
-        toast.error('Formato inválido. Use JPG, PNG, GIF ou WebP.');
+        toast.error('Formato inválido. Use JPG, PNG, GIF, WebP ou AVIF.');
         return null;
       }
       if (mediaType === 'video') {
@@ -62,11 +63,12 @@ export function useProductImageUpload() {
         }
       }
 
-      const fileExt = file.name.split('.').pop()?.toLowerCase() || (mediaType === 'video' ? 'mp4' : 'jpg');
+      const processedFile = mediaType === 'image' ? await convertImageToJpeg(file) : file;
+      const fileExt = processedFile.name.split('.').pop()?.toLowerCase() || (mediaType === 'video' ? 'mp4' : 'jpg');
       const fileName = `${Date.now()}-${crypto.randomUUID()}.${fileExt}`;
       let bucketName = BUCKET_NAME;
       let objectPath = fileName;
-      const contentType = mediaType === 'video' ? `video/${fileExt}` : file.type;
+      const contentType = mediaType === 'video' ? `video/${fileExt}` : processedFile.type;
       let adminToken: string | null = null;
 
       if (mediaType === 'video') {
@@ -117,7 +119,7 @@ export function useProductImageUpload() {
         }
         storedPath = data.path;
       } else {
-        const { data, error } = await supabase.storage.from(BUCKET_NAME).upload(objectPath, file, {
+        const { data, error } = await supabase.storage.from(BUCKET_NAME).upload(objectPath, processedFile, {
           cacheControl: '3600',
           upsert: false,
           ...(contentType ? { contentType } : {}),
